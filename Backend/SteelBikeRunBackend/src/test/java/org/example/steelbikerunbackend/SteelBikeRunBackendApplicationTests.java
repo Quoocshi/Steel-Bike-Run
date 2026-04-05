@@ -1,10 +1,10 @@
-package org.example.steelbikerun;
+package org.example.steelbikerunbackend;
 
 import org.junit.jupiter.api.Test;
 import org.springframework.boot.test.context.SpringBootTest;
 
 @SpringBootTest
-class SteelbikerunApplicationTests {
+class SteelBikeRunBackendApplicationTests {
 
     @Test
     void contextLoads() {
