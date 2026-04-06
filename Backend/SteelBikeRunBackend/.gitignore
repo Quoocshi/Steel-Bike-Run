@@ -31,3 +31,8 @@ build/
 
 ### VS Code ###
 .vscode/
+
+### Secrets - Ignored by user request ###
+src/main/resources/application.properties
+*.properties
+
