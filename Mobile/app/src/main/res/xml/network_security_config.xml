@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<network-security-config>
+    <!--
+        Cho phép HTTP cleartext trong debug (emulator, điện thoại USB, bất kỳ IP LAN nào).
+        Production dùng HTTPS nên không ảnh hưởng release build.
+    -->
+    <base-config cleartextTrafficPermitted="true" />
+</network-security-config>
