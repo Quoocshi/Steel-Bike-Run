@@ -25,6 +25,7 @@ android {
         versionName = "1.0"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+        manifestPlaceholders["MAPS_API_KEY"] = localProps.getProperty("MAPS_API_KEY", "")
     }
 
     compileOptions {
@@ -43,15 +44,26 @@ android {
         debug {
             val baseUrl = localProps.getProperty("LOCAL_BASE_URL", "http://10.0.2.2:8081/")
             buildConfigField("String", "BASE_URL", "\"$baseUrl\"")
+            buildConfigField("String", "WS_URL", "\"${baseUrl.toWebSocketUrl()}ws\"")
         }
         release {
             buildConfigField("String", "BASE_URL", "\"https://api.steelbike.example/\"")
+            buildConfigField("String", "WS_URL", "\"wss://api.steelbike.example/ws\"")
             isMinifyEnabled = false
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro"
             )
         }
+    }
+}
+
+fun String.toWebSocketUrl(): String {
+    val normalized = if (endsWith("/")) this else "$this/"
+    return when {
+        normalized.startsWith("https://") -> normalized.replaceFirst("https://", "wss://")
+        normalized.startsWith("http://") -> normalized.replaceFirst("http://", "ws://")
+        else -> normalized
     }
 }
 
@@ -76,6 +88,14 @@ dependencies {
     implementation(libs.okhttp.logging)
     implementation(libs.androidx.datastore.preferences)
     implementation(libs.kotlinx.coroutines.android)
+    implementation(libs.androidx.compose.ui.text.google.fonts)
+    implementation(libs.androidx.compose.material.icons.extended)
+    implementation(libs.maps.compose)
+    implementation(libs.play.services.maps)
+    implementation(libs.camerax.core)
+    implementation(libs.camerax.camera2)
+    implementation(libs.camerax.lifecycle)
+    implementation(libs.camerax.view)
     kapt(libs.hilt.android.compiler)
     testImplementation(libs.junit)
     androidTestImplementation(libs.androidx.junit)

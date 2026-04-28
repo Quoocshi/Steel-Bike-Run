@@ -8,5 +8,6 @@ interface AuthRepository {
     suspend fun login(identifier: String, password: String): Result<AuthSession>
     suspend fun register(payload: RegisterPayload): Result<AuthSession>
     fun observeToken(): Flow<String?>
+    fun observeSession(): Flow<AuthSession?>
     suspend fun logout()
 }
