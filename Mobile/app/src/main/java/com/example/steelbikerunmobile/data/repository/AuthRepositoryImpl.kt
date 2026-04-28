@@ -21,12 +21,7 @@ class AuthRepositoryImpl @Inject constructor(
         val envelope = authApiService.login(LoginRequestDto(identifier, password))
         val session = envelope.data?.toDomain()
             ?: error(envelope.message.ifBlank { "Login failed" })
-        dataStore.saveAuthSession(
-            token = session.token,
-            email = session.email,
-            fullName = session.fullName,
-            role = session.role.name
-        )
+        dataStore.saveAuthSession(session)
         session
     }
 
@@ -42,16 +37,13 @@ class AuthRepositoryImpl @Inject constructor(
         )
         val session = envelope.data?.toDomain()
             ?: error(envelope.message.ifBlank { "Register failed" })
-        dataStore.saveAuthSession(
-            token = session.token,
-            email = session.email,
-            fullName = session.fullName,
-            role = session.role.name
-        )
+        dataStore.saveAuthSession(session)
         session
     }
 
     override fun observeToken(): Flow<String?> = dataStore.tokenFlow
+
+    override fun observeSession(): Flow<AuthSession?> = dataStore.authSessionFlow
 
     override suspend fun logout() {
         dataStore.clear()

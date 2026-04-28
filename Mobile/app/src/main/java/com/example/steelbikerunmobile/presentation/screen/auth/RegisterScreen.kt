@@ -3,127 +3,260 @@ package com.example.steelbikerunmobile.presentation.screen.auth
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.selection.selectable
-import androidx.compose.material3.Button
-import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.outlined.Email
+import androidx.compose.material.icons.outlined.Person
+import androidx.compose.material.icons.outlined.Phone
+import androidx.compose.material3.FilterChip
+import androidx.compose.material3.FilterChipDefaults
+import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedTextField
-import androidx.compose.material3.RadioButton
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.text.input.PasswordVisualTransformation
+import androidx.compose.ui.platform.LocalSoftwareKeyboardController
+import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.example.steelbikerunmobile.domain.model.UserRole
+import com.example.steelbikerunmobile.presentation.component.atom.SbPasswordField
+import com.example.steelbikerunmobile.presentation.component.atom.SbPrimaryButton
+import com.example.steelbikerunmobile.presentation.component.atom.SbTextField
+import com.example.steelbikerunmobile.presentation.component.atom.SbTextButton
+import com.example.steelbikerunmobile.presentation.component.molecule.AuthHeader
+import com.example.steelbikerunmobile.presentation.theme.SteelBikeTheme
 
 @Composable
 fun RegisterScreen(
     onNavigateBackToLogin: () -> Unit,
     onRegisterSuccess: () -> Unit,
-    viewModel: RegisterViewModel = hiltViewModel()
+    viewModel: RegisterViewModel = hiltViewModel(),
 ) {
     val uiState: RegisterUiState by viewModel.uiState.collectAsStateWithLifecycle()
+    val keyboard = LocalSoftwareKeyboardController.current
 
     LaunchedEffect(uiState.registerSuccess) {
         if (uiState.registerSuccess) {
+            keyboard?.hide()
             onRegisterSuccess()
             viewModel.consumeSuccess()
         }
     }
 
-    Column(
-        modifier = Modifier
-            .fillMaxSize()
-            .padding(24.dp),
-        verticalArrangement = Arrangement.spacedBy(12.dp)
+    RegisterContent(
+        uiState = uiState,
+        onFullNameChange = viewModel::onFullNameChange,
+        onEmailChange = viewModel::onEmailChange,
+        onPhoneChange = viewModel::onPhoneChange,
+        onPasswordChange = viewModel::onPasswordChange,
+        onRoleChange = viewModel::onRoleChange,
+        onRegister = {
+            keyboard?.hide()
+            viewModel.register()
+        },
+        onNavigateBackToLogin = onNavigateBackToLogin,
+    )
+}
+
+@Composable
+private fun RegisterContent(
+    uiState: RegisterUiState,
+    onFullNameChange: (String) -> Unit,
+    onEmailChange: (String) -> Unit,
+    onPhoneChange: (String) -> Unit,
+    onPasswordChange: (String) -> Unit,
+    onRoleChange: (UserRole) -> Unit,
+    onRegister: () -> Unit,
+    onNavigateBackToLogin: () -> Unit,
+) {
+    Surface(
+        modifier = Modifier.fillMaxSize(),
+        color = MaterialTheme.colorScheme.background,
     ) {
-        Text("SteelBike", style = MaterialTheme.typography.headlineMedium)
-        Text("Đăng ký", style = MaterialTheme.typography.titleMedium)
-
-        OutlinedTextField(
-            value = uiState.fullName,
-            onValueChange = viewModel::onFullNameChange,
-            label = { Text("Họ và tên") },
-            modifier = Modifier.fillMaxWidth()
-        )
-        OutlinedTextField(
-            value = uiState.email,
-            onValueChange = viewModel::onEmailChange,
-            label = { Text("Email") },
-            modifier = Modifier.fillMaxWidth()
-        )
-        OutlinedTextField(
-            value = uiState.phone,
-            onValueChange = viewModel::onPhoneChange,
-            label = { Text("Số điện thoại") },
-            modifier = Modifier.fillMaxWidth()
-        )
-        OutlinedTextField(
-            value = uiState.password,
-            onValueChange = viewModel::onPasswordChange,
-            label = { Text("Mật khẩu (>= 6 ký tự)") },
-            visualTransformation = PasswordVisualTransformation(),
-            modifier = Modifier.fillMaxWidth()
-        )
-
-        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            RoleChoice(
-                label = "Customer",
-                selected = uiState.role == UserRole.CUSTOMER,
-                onClick = { viewModel.onRoleChange(UserRole.CUSTOMER) }
-            )
-            RoleChoice(
-                label = "Driver",
-                selected = uiState.role == UserRole.DRIVER,
-                onClick = { viewModel.onRoleChange(UserRole.DRIVER) }
-            )
-        }
-
-        uiState.errorMessage?.let {
-            Text(text = it, color = MaterialTheme.colorScheme.error)
-        }
-
-        Button(
-            onClick = viewModel::register,
-            enabled = !uiState.isLoading,
-            modifier = Modifier.fillMaxWidth()
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .imePadding()
+                .verticalScroll(rememberScrollState())
+                .padding(horizontal = 28.dp, vertical = 40.dp),
+            verticalArrangement = Arrangement.Top,
+            horizontalAlignment = Alignment.CenterHorizontally,
         ) {
-            if (uiState.isLoading) {
-                CircularProgressIndicator()
-            } else {
-                Text("Tạo tài khoản")
+            AuthHeader(
+                title = "Tạo tài khoản",
+                subtitle = "Điền thông tin để bắt đầu",
+            )
+
+            Spacer(modifier = Modifier.height(32.dp))
+
+            SbTextField(
+                value = uiState.fullName,
+                onValueChange = onFullNameChange,
+                label = "Họ và tên",
+                leadingIcon = Icons.Outlined.Person,
+                errorMessage = uiState.fullNameError,
+                imeAction = ImeAction.Next,
+            )
+
+            Spacer(modifier = Modifier.height(14.dp))
+
+            SbTextField(
+                value = uiState.email,
+                onValueChange = onEmailChange,
+                label = "Email",
+                leadingIcon = Icons.Outlined.Email,
+                errorMessage = uiState.emailError,
+                keyboardType = KeyboardType.Email,
+                imeAction = ImeAction.Next,
+            )
+
+            Spacer(modifier = Modifier.height(14.dp))
+
+            SbTextField(
+                value = uiState.phone,
+                onValueChange = onPhoneChange,
+                label = "Số điện thoại",
+                leadingIcon = Icons.Outlined.Phone,
+                errorMessage = uiState.phoneError,
+                keyboardType = KeyboardType.Phone,
+                imeAction = ImeAction.Next,
+            )
+
+            Spacer(modifier = Modifier.height(14.dp))
+
+            SbPasswordField(
+                value = uiState.password,
+                onValueChange = onPasswordChange,
+                label = "Mật khẩu (tối thiểu 6 ký tự)",
+                errorMessage = uiState.passwordError,
+                imeAction = ImeAction.Done,
+                onImeAction = onRegister,
+            )
+
+            Spacer(modifier = Modifier.height(20.dp))
+
+            // Role selector chips
+            Column(modifier = Modifier.fillMaxWidth()) {
+                Text(
+                    text = "Bạn muốn đăng ký với vai trò",
+                    style = MaterialTheme.typography.labelMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                Spacer(modifier = Modifier.height(10.dp))
+                Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                    RoleChip(
+                        label = "Khách hàng",
+                        emoji = "\uD83D\uDC64",  // 👤
+                        selected = uiState.role == UserRole.CUSTOMER,
+                        onClick = { onRoleChange(UserRole.CUSTOMER) },
+                    )
+                    RoleChip(
+                        label = "Tài xế",
+                        emoji = "\uD83D\uDEB2",  // 🚲
+                        selected = uiState.role == UserRole.DRIVER,
+                        onClick = { onRoleChange(UserRole.DRIVER) },
+                    )
+                }
             }
-        }
 
-        TextButton(
-            onClick = onNavigateBackToLogin,
-            modifier = Modifier.fillMaxWidth()
-        ) {
-            Text("Đã có tài khoản? Quay lại đăng nhập")
+            uiState.errorMessage?.let { msg ->
+                Spacer(modifier = Modifier.height(10.dp))
+                Text(
+                    text = msg,
+                    color = MaterialTheme.colorScheme.error,
+                    style = MaterialTheme.typography.bodySmall,
+                    modifier = Modifier.fillMaxWidth(),
+                )
+            }
+
+            Spacer(modifier = Modifier.height(24.dp))
+
+            SbPrimaryButton(
+                text = "Tạo tài khoản",
+                onClick = onRegister,
+                isLoading = uiState.isLoading,
+                enabled = uiState.fullName.isNotBlank() &&
+                          uiState.email.isNotBlank() &&
+                          uiState.phone.isNotBlank() &&
+                          uiState.password.isNotBlank(),
+            )
+
+            Spacer(modifier = Modifier.height(24.dp))
+
+            Row(
+                horizontalArrangement = Arrangement.Center,
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Text(
+                    text = "Đã có tài khoản?",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                SbTextButton(
+                    text = "Đăng nhập",
+                    onClick = onNavigateBackToLogin,
+                )
+            }
         }
     }
 }
 
 @Composable
-private fun RoleChoice(
+private fun RoleChip(
     label: String,
+    emoji: String,
     selected: Boolean,
-    onClick: () -> Unit
+    onClick: () -> Unit,
 ) {
-    Row(
-        verticalAlignment = Alignment.CenterVertically,
-        modifier = Modifier.selectable(selected = selected, onClick = onClick)
-    ) {
-        RadioButton(selected = selected, onClick = onClick)
-        Text(text = label)
+    FilterChip(
+        selected = selected,
+        onClick = onClick,
+        label = { Text(label, style = MaterialTheme.typography.labelLarge) },
+        leadingIcon = {
+            Text(text = emoji, modifier = Modifier.size(18.dp))
+        },
+        colors = FilterChipDefaults.filterChipColors(
+            selectedContainerColor = MaterialTheme.colorScheme.primaryContainer,
+            selectedLabelColor     = MaterialTheme.colorScheme.onPrimaryContainer,
+        ),
+        border = FilterChipDefaults.filterChipBorder(
+            enabled = true,
+            selected = selected,
+            borderColor = MaterialTheme.colorScheme.outline,
+            selectedBorderColor = MaterialTheme.colorScheme.primary,
+        ),
+    )
+}
+
+@Preview(showSystemUi = true)
+@Composable
+private fun RegisterPreview() {
+    SteelBikeTheme {
+        RegisterContent(
+            uiState = RegisterUiState(),
+            onFullNameChange = {},
+            onEmailChange = {},
+            onPhoneChange = {},
+            onPasswordChange = {},
+            onRoleChange = {},
+            onRegister = {},
+            onNavigateBackToLogin = {},
+        )
     }
 }

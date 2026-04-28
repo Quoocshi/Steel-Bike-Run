@@ -1,47 +1,43 @@
 package com.example.steelbikerunmobile.presentation.screen.home
 
-import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.padding
-import androidx.compose.material3.Button
-import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Scaffold
-import androidx.compose.material3.Text
-import androidx.compose.material3.TopAppBar
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.unit.dp
+import androidx.hilt.navigation.compose.hiltViewModel
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.example.steelbikerunmobile.domain.model.UserRole
+import com.example.steelbikerunmobile.presentation.screen.customer.home.CustomerHomeScreen
+import com.example.steelbikerunmobile.presentation.screen.driver.home.DriverHomeScreen
+import com.example.steelbikerunmobile.presentation.theme.AppThemeMode
+import com.example.steelbikerunmobile.presentation.theme.SteelBikeTheme
 
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun HomeScreen(
-    onLogout: () -> Unit
+    onLogout: () -> Unit,
+    viewModel: HomeViewModel = hiltViewModel(),
 ) {
-    Scaffold(
-        topBar = { TopAppBar(title = { Text("SteelBike") }) }
-    ) { innerPadding: PaddingValues ->
-        Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(innerPadding)
-                .padding(24.dp),
-            horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.Center
-        ) {
-            Text(
-                text = "Đăng nhập thành công",
-                style = MaterialTheme.typography.headlineSmall
-            )
-            Text(
-                text = "Tuần 1: Login/Register + JWT DataStore đã sẵn sàng.",
-                modifier = Modifier.padding(top = 12.dp, bottom = 24.dp)
-            )
-            Button(onClick = onLogout) {
-                Text("Đăng xuất")
+    val session by viewModel.session.collectAsStateWithLifecycle()
+
+    when (session?.role) {
+        UserRole.DRIVER -> {
+            // Driver app uses its own dark/orange theme
+            SteelBikeTheme(mode = AppThemeMode.DRIVER) {
+                DriverHomeScreen(onLogout = onLogout)
+            }
+        }
+        UserRole.CUSTOMER, UserRole.ADMIN -> {
+            CustomerHomeScreen(onLogout = onLogout)
+        }
+        null -> {
+            Box(
+                modifier = Modifier.fillMaxSize(),
+                contentAlignment = Alignment.Center,
+            ) {
+                CircularProgressIndicator()
             }
         }
     }

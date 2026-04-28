@@ -5,6 +5,8 @@ import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.emptyPreferences
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
+import com.example.steelbikerunmobile.domain.model.AuthSession
+import com.example.steelbikerunmobile.domain.model.UserRole
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.catch
@@ -20,6 +22,7 @@ class AuthPreferencesDataStore @Inject constructor(
     @ApplicationContext private val context: Context
 ) {
     private val tokenKey = stringPreferencesKey("jwt_token")
+    private val userIdKey = stringPreferencesKey("user_id")
     private val emailKey = stringPreferencesKey("email")
     private val fullNameKey = stringPreferencesKey("full_name")
     private val roleKey = stringPreferencesKey("role")
@@ -34,12 +37,40 @@ class AuthPreferencesDataStore @Inject constructor(
         }
         .map { prefs -> prefs[tokenKey] }
 
-    suspend fun saveAuthSession(token: String, email: String, fullName: String, role: String) {
+    val authSessionFlow: Flow<AuthSession?> = context.dataStore.data
+        .catch { exception ->
+            if (exception is IOException) {
+                emit(emptyPreferences())
+            } else {
+                throw exception
+            }
+        }
+        .map { prefs ->
+            val token = prefs[tokenKey].orEmpty()
+            val userId = prefs[userIdKey].orEmpty()
+            val email = prefs[emailKey].orEmpty()
+            val fullName = prefs[fullNameKey].orEmpty()
+            val role = prefs[roleKey]?.let { runCatching { UserRole.valueOf(it) }.getOrNull() }
+            if (token.isBlank() || role == null) {
+                null
+            } else {
+                AuthSession(
+                    token = token,
+                    userId = userId,
+                    fullName = fullName,
+                    email = email,
+                    role = role
+                )
+            }
+        }
+
+    suspend fun saveAuthSession(session: AuthSession) {
         context.dataStore.edit { prefs ->
-            prefs[tokenKey] = token
-            prefs[emailKey] = email
-            prefs[fullNameKey] = fullName
-            prefs[roleKey] = role
+            prefs[tokenKey] = session.token
+            prefs[userIdKey] = session.userId
+            prefs[emailKey] = session.email
+            prefs[fullNameKey] = session.fullName
+            prefs[roleKey] = session.role.name
         }
     }
 

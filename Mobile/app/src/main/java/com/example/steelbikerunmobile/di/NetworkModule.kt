@@ -1,7 +1,10 @@
 package com.example.steelbikerunmobile.di
 
 import com.example.steelbikerunmobile.BuildConfig
+import com.example.steelbikerunmobile.data.remote.AuthTokenInterceptor
 import com.example.steelbikerunmobile.data.remote.api.AuthApiService
+import com.example.steelbikerunmobile.data.remote.api.DriverApiService
+import com.example.steelbikerunmobile.data.remote.api.TripApiService
 import dagger.Module
 import dagger.Provides
 import dagger.hilt.InstallIn
@@ -18,11 +21,12 @@ object NetworkModule {
 
     @Provides
     @Singleton
-    fun provideOkHttpClient(): OkHttpClient {
+    fun provideOkHttpClient(authTokenInterceptor: AuthTokenInterceptor): OkHttpClient {
         val loggingInterceptor = HttpLoggingInterceptor().apply {
             level = HttpLoggingInterceptor.Level.BODY
         }
         return OkHttpClient.Builder()
+            .addInterceptor(authTokenInterceptor)
             .addInterceptor(loggingInterceptor)
             .build()
     }
@@ -41,5 +45,17 @@ object NetworkModule {
     @Singleton
     fun provideAuthApiService(retrofit: Retrofit): AuthApiService {
         return retrofit.create(AuthApiService::class.java)
+    }
+
+    @Provides
+    @Singleton
+    fun provideDriverApiService(retrofit: Retrofit): DriverApiService {
+        return retrofit.create(DriverApiService::class.java)
+    }
+
+    @Provides
+    @Singleton
+    fun provideTripApiService(retrofit: Retrofit): TripApiService {
+        return retrofit.create(TripApiService::class.java)
     }
 }
