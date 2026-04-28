@@ -7,31 +7,31 @@ import org.example.steelbikerunbackend.module.user.entity.User;
 import java.time.LocalDateTime;
 import java.util.UUID;
 
-@Schema(description = "Thông tin profile của User")
+@Schema(description = "Thông tin profile người dùng")
 public record UserProfileResponse(
-        
-        @Schema(description = "ID của user")
+
+        @Schema(description = "User ID")
         UUID id,
-        
-        @Schema(description = "Email của user")
+
+        @Schema(description = "Email")
         String email,
-        
+
         @Schema(description = "Số điện thoại")
         String phone,
-        
+
         @Schema(description = "Họ và tên")
         String fullName,
-        
+
         @Schema(description = "URL ảnh đại diện")
         String avatarUrl,
-        
-        @Schema(description = "Vai trò của user")
+
+        @Schema(description = "Vai trò")
         UserRole role,
-        
-        @Schema(description = "Trạng thái hoạt động")
+
+        @Schema(description = "Tài khoản đang hoạt động")
         boolean isActive,
-        
-        @Schema(description = "Thời gian tạo tài khoản")
+
+        @Schema(description = "Ngày tạo tài khoản")
         LocalDateTime createdAt
 ) {
     public static UserProfileResponse from(User user) {

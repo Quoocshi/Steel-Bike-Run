@@ -24,18 +24,24 @@ public class UserController {
     private final UserService userService;
 
     @Operation(
-            summary = "Lấy profile người dùng hiện tại",
-            description = "Trả về thông tin profile (họ tên, email, sđt, avatar,...) của người dùng đang đăng nhập"
+            summary = "Lấy profile cá nhân",
+            description = """
+                    Trả về thông tin profile của user đang đăng nhập.
+
+                    **Caching**: Lần đầu lấy từ PostgreSQL và lưu vào Redis (TTL 10 phút).
+                    Các lần tiếp theo trả về trực tiếp từ Redis.
+                    """
     )
     @ApiResponses({
-            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "200", description = "Lấy dữ liệu thành công"),
-            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "404", description = "Không tìm thấy người dùng (bị xoá / sai token)")
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "200",
+                    description = "Lấy profile thành công"),
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "401",
+                    description = "Chưa đăng nhập")
     })
     @GetMapping("/profile")
     public ResponseEntity<ApiResponse<UserProfileResponse>> getMyProfile(
-            @AuthenticationPrincipal String userEmail) {
-        
-        UserProfileResponse response = userService.getMyProfile(userEmail);
-        return ResponseEntity.ok(ApiResponse.success(response));
+            @AuthenticationPrincipal String email) {
+        UserProfileResponse profile = userService.getMyProfile(email);
+        return ResponseEntity.ok(ApiResponse.success(profile));
     }
 }
