@@ -25,6 +25,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.GpsFixed
 import androidx.compose.material.icons.outlined.Logout
 import androidx.compose.material.icons.outlined.Search
+import androidx.compose.material.icons.outlined.TwoWheeler
 import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -32,6 +33,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -46,6 +48,7 @@ import com.example.steelbikerunmobile.presentation.screen.customer.component.Cus
 import com.example.steelbikerunmobile.presentation.screen.customer.component.DestinationSearchSheet
 import com.example.steelbikerunmobile.presentation.screen.customer.component.DriverTrackingCard
 import com.example.steelbikerunmobile.presentation.screen.customer.component.FindingDriverOverlay
+import com.example.steelbikerunmobile.presentation.screen.customer.component.SwitchToDriverSheet
 import com.example.steelbikerunmobile.presentation.screen.customer.component.TripInProgressCard
 import com.example.steelbikerunmobile.presentation.screen.customer.component.TripPreviewSheet
 import com.example.steelbikerunmobile.presentation.screen.customer.component.TripReceiptOverlay
@@ -57,6 +60,15 @@ fun CustomerHomeScreen(
     viewModel: CustomerHomeViewModel = hiltViewModel(),
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
+
+    // Reset any stale role-switch phase each time this composable enters composition.
+    // Needed because Hilt scopes CustomerHomeViewModel to the NavBackStackEntry (Home
+    // route), so the same VM instance is reused across CUSTOMER→DRIVER→CUSTOMER
+    // transitions. Without this, roleSwitchPhase could be left in a non-IDLE state from
+    // the previous session, causing the "Switch to Driver" button to silently do nothing.
+    LaunchedEffect(Unit) {
+        viewModel.onScreenResumed()
+    }
 
     // System back-button behaviour per step
     BackHandler(enabled = uiState.flowStep != CustomerFlowStep.HOME) {
@@ -95,6 +107,8 @@ fun CustomerHomeScreen(
         ) {
             TopMapBar(
                 onSearchClicked = viewModel::onSearchBarClicked,
+                onSwitchToDriver = viewModel::onSwitchToDriverClicked,
+                isSwitchingRole = uiState.roleSwitchPhase == RoleSwitchPhase.SWITCHING,
                 onLogout = onLogout,
             )
         }
@@ -201,6 +215,44 @@ fun CustomerHomeScreen(
                 )
             }
         }
+
+        // ── Role switch (Customer → Driver) – vehicle info bottom sheet ────────
+        // Only shown if the backend told us the user has no driver profile yet.
+        val showVehicleSheet = uiState.roleSwitchPhase == RoleSwitchPhase.AWAITING_VEHICLE_INFO ||
+            uiState.roleSwitchPhase == RoleSwitchPhase.SUBMITTING_VEHICLE
+        if (showVehicleSheet) {
+            SwitchToDriverSheet(
+                form                  = uiState.vehicleForm,
+                isSubmitting          = uiState.roleSwitchPhase == RoleSwitchPhase.SUBMITTING_VEHICLE,
+                errorMessage          = uiState.roleSwitchError,
+                onVehiclePlateChange  = viewModel::onVehiclePlateChange,
+                onVehicleModelChange  = viewModel::onVehicleModelChange,
+                onVehicleColorChange  = viewModel::onVehicleColorChange,
+                onLicenseNumberChange = viewModel::onLicenseNumberChange,
+                onSubmit              = viewModel::onSubmitVehicleInfo,
+                onDismiss             = viewModel::onDismissRoleSwitch,
+            )
+        }
+
+        // Inline error banner when role switch fails for a non-vehicle reason
+        uiState.roleSwitchError?.let { msg ->
+            if (uiState.roleSwitchPhase == RoleSwitchPhase.IDLE) {
+                Surface(
+                    modifier = Modifier
+                        .align(Alignment.BottomCenter)
+                        .padding(16.dp),
+                    shape = MaterialTheme.shapes.medium,
+                    color = MaterialTheme.colorScheme.errorContainer,
+                ) {
+                    Text(
+                        text = msg,
+                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp),
+                        color = MaterialTheme.colorScheme.onErrorContainer,
+                        style = MaterialTheme.typography.bodyMedium,
+                    )
+                }
+            }
+        }
     }
 }
 
@@ -208,6 +260,8 @@ fun CustomerHomeScreen(
 @Composable
 private fun TopMapBar(
     onSearchClicked: () -> Unit,
+    onSwitchToDriver: () -> Unit,
+    isSwitchingRole: Boolean,
     onLogout: () -> Unit,
 ) {
     Row(
@@ -248,6 +302,22 @@ private fun TopMapBar(
             color = MaterialTheme.colorScheme.surface,
             shadowElevation = 6.dp,
         ) {
+            IconButton(
+                onClick = onSwitchToDriver,
+                enabled = !isSwitchingRole,
+            ) {
+                Icon(
+                    Icons.Outlined.TwoWheeler,
+                    contentDescription = "Chuyển sang chế độ Tài xế",
+                    tint = MaterialTheme.colorScheme.primary,
+                )
+            }
+        }
+        Surface(
+            shape = CircleShape,
+            color = MaterialTheme.colorScheme.surface,
+            shadowElevation = 6.dp,
+        ) {
             IconButton(onClick = onLogout) {
                 Icon(
                     Icons.Outlined.Logout,
@@ -271,7 +341,12 @@ private fun CustomerHomePreview() {
             Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                 Text("Google Maps (requires API key)", color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
-            TopMapBar(onSearchClicked = {}, onLogout = {})
+            TopMapBar(
+                onSearchClicked = {},
+                onSwitchToDriver = {},
+                isSwitchingRole = false,
+                onLogout = {},
+            )
         }
     }
 }

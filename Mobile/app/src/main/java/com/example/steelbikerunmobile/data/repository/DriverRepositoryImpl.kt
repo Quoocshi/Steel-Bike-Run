@@ -1,36 +1,82 @@
 package com.example.steelbikerunmobile.data.repository
 
 import com.example.steelbikerunmobile.data.location.LocationStreamProvider
+import com.example.steelbikerunmobile.data.remote.NetworkErrorMapper
 import com.example.steelbikerunmobile.data.remote.api.DriverApiService
 import com.example.steelbikerunmobile.data.remote.dto.DriverProfileDto
+import com.example.steelbikerunmobile.data.remote.dto.DriverStatusRequestDto
 import com.example.steelbikerunmobile.data.remote.dto.LocationHeartbeatDto
 import com.example.steelbikerunmobile.data.remote.dto.NearbyDriverDto
 import com.example.steelbikerunmobile.data.remote.dto.SwitchDriverRequestDto
+import com.example.steelbikerunmobile.data.remote.dto.SwitchRoleResponseDto
 import com.example.steelbikerunmobile.data.remote.websocket.WebSocketManager
 import com.example.steelbikerunmobile.domain.model.DriverProfile
 import com.example.steelbikerunmobile.domain.model.LatLng
 import com.example.steelbikerunmobile.domain.model.LocationHeartbeat
 import com.example.steelbikerunmobile.domain.model.NearbyDriver
+import com.example.steelbikerunmobile.domain.model.UserRole
 import com.example.steelbikerunmobile.domain.model.VehicleInfo
+import com.example.steelbikerunmobile.domain.repository.AuthRepository
 import com.example.steelbikerunmobile.domain.repository.DriverRepository
 import kotlinx.coroutines.flow.Flow
 import javax.inject.Inject
 
 class DriverRepositoryImpl @Inject constructor(
     private val driverApiService: DriverApiService,
+    private val authRepository: AuthRepository,
     private val locationStreamProvider: LocationStreamProvider,
     private val webSocketManager: WebSocketManager
 ) : DriverRepository {
 
-    override suspend fun getProfile(): Result<DriverProfile> = runCatching {
+    override suspend fun getProfile(): Result<DriverProfile> = NetworkErrorMapper.safeCall {
         val envelope = driverApiService.getProfile()
-        envelope.data?.toDomain() ?: error(envelope.message.ifBlank { "Chưa có profile tài xế" })
+        envelope.data?.toDomain()
+            ?: error(envelope.message?.takeIf { it.isNotBlank() } ?: "Chưa có profile tài xế")
     }
 
-    override suspend fun switchOnline(vehicleInfo: VehicleInfo?): Result<DriverProfile> = runCatching {
-        val envelope = driverApiService.switchDriver(vehicleInfo?.toDto())
-        envelope.data?.toDomain() ?: error(envelope.message.ifBlank { "Không thể đổi trạng thái tài xế" })
+    override suspend fun switchToDriver(vehicleInfo: VehicleInfo?): Result<DriverProfile> =
+        NetworkErrorMapper.safeCall {
+            // Two different Retrofit calls for the same endpoint:
+            //
+            // • vehicleInfo == null  →  switchToDriverExisting()  — sends NO body at all.
+            //   Spring's @RequestBody(required=false) receives null, skips @Valid, and
+            //   the service checks profile existence directly.
+            //     - Profile exists  → 200 + new DRIVER JWT  ✓
+            //     - No profile yet  → 400 "Cần cung cấp thông tin xe"  → caller shows form ✓
+            //
+            // • vehicleInfo != null  →  switchToDriverNew(body)  — sends full vehicle info.
+            //   Spring validates @NotBlank fields, creates the profile, returns 200.
+            //
+            // We must NOT send an empty body {} for the "existing profile" case because
+            // @Valid would fire on the null-field record and return 400 before the
+            // business logic is ever reached — showing the form again every time.
+            val envelope = if (vehicleInfo != null) {
+                driverApiService.switchToDriverNew(vehicleInfo.toDto())
+            } else {
+                driverApiService.switchToDriverExisting()
+            }
+            val payload = envelope.data
+                ?: error(envelope.message?.takeIf { it.isNotBlank() } ?: "Không thể chuyển sang chế độ Tài xế")
+            // Backend re-issues a fresh JWT carrying the new role — overwrite the cached one
+            // BEFORE returning, otherwise the next request still goes out as CUSTOMER and 403s.
+            authRepository.updateAccessToken(payload.accessToken, UserRole.DRIVER)
+            payload.driverProfile.toDomain()
+        }
+
+    override suspend fun switchToCustomer(): Result<DriverProfile> = NetworkErrorMapper.safeCall {
+        val envelope = driverApiService.switchToCustomer()
+        val payload = envelope.data
+            ?: error(envelope.message?.takeIf { it.isNotBlank() } ?: "Không thể chuyển về chế độ Khách hàng")
+        authRepository.updateAccessToken(payload.accessToken, UserRole.CUSTOMER)
+        payload.driverProfile.toDomain()
     }
+
+    override suspend fun setOnlineStatus(isOnline: Boolean): Result<DriverProfile> =
+        NetworkErrorMapper.safeCall {
+            val envelope = driverApiService.setDriverStatus(DriverStatusRequestDto(isOnline))
+            envelope.data?.toDomain()
+                ?: error(envelope.message?.takeIf { it.isNotBlank() } ?: "Không thể cập nhật trạng thái")
+        }
 
     override fun observeLocation(): Flow<LocationHeartbeat> = locationStreamProvider.observeLocation()
 

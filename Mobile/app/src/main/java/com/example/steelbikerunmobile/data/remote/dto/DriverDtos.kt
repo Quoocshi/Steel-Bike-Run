@@ -9,6 +9,16 @@ data class SwitchDriverRequestDto(
     val licenseNumber: String?
 )
 
+data class DriverStatusRequestDto(
+    @SerializedName("isOnline")
+    val isOnline: Boolean
+)
+
+data class SwitchRoleResponseDto(
+    val accessToken: String,
+    val driverProfile: DriverProfileDto
+)
+
 data class DriverProfileDto(
     val driverId: String,
     val userId: String,

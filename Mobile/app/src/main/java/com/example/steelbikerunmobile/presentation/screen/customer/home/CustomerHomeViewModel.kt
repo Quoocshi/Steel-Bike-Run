@@ -8,7 +8,10 @@ import com.example.steelbikerunmobile.domain.model.LatLng
 import com.example.steelbikerunmobile.domain.model.NearbyDriver
 import com.example.steelbikerunmobile.domain.model.PriceEstimate
 import com.example.steelbikerunmobile.domain.model.SurgeZone
+import com.example.steelbikerunmobile.domain.model.VehicleInfo
 import com.example.steelbikerunmobile.domain.usecase.driver.GetNearbyDriversUseCase
+import com.example.steelbikerunmobile.domain.usecase.driver.SwitchToDriverUseCase
+import retrofit2.HttpException
 import com.example.steelbikerunmobile.domain.usecase.trip.CreateTripUseCase
 import com.example.steelbikerunmobile.domain.usecase.trip.GetPriceEstimateUseCase
 import dagger.hilt.android.lifecycle.HiltViewModel
@@ -64,6 +67,22 @@ data class TripReceipt(
     val comment: String = "",
 )
 
+/** State of the role-switch (CUSTOMER → DRIVER) flow. */
+enum class RoleSwitchPhase {
+    IDLE,                 // not switching
+    SWITCHING,            // hitting /driver/switch with no body
+    AWAITING_VEHICLE_INFO,// backend told us we need vehicle info → show form
+    SUBMITTING_VEHICLE,   // hitting /driver/switch with vehicle body
+    DONE,                 // success — let UI react (Home will route to DriverHomeScreen)
+}
+
+data class VehicleInfoForm(
+    val vehiclePlate: String = "",
+    val vehicleModel: String = "",
+    val vehicleColor: String = "",
+    val licenseNumber: String = "",
+)
+
 data class CustomerHomeUiState(
     val pickup: LatLng = DemoMapData.defaultPickup,
     val flowStep: CustomerFlowStep = CustomerFlowStep.HOME,
@@ -88,6 +107,10 @@ data class CustomerHomeUiState(
     // UI
     val isLoading: Boolean = false,
     val errorMessage: String? = null,
+    // Role-switch (Customer → Driver)
+    val roleSwitchPhase: RoleSwitchPhase = RoleSwitchPhase.IDLE,
+    val vehicleForm: VehicleInfoForm = VehicleInfoForm(),
+    val roleSwitchError: String? = null,
 )
 
 @HiltViewModel
@@ -95,6 +118,7 @@ class CustomerHomeViewModel @Inject constructor(
     private val getNearbyDriversUseCase: GetNearbyDriversUseCase,
     private val getPriceEstimateUseCase: GetPriceEstimateUseCase,
     private val createTripUseCase: CreateTripUseCase,
+    private val switchToDriverUseCase: SwitchToDriverUseCase,
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(CustomerHomeUiState())
@@ -319,6 +343,142 @@ class CustomerHomeViewModel @Inject constructor(
                 cos(Math.toRadians(a.latitude)) * cos(Math.toRadians(b.latitude)) *
                 sin(dLng / 2).pow(2)
         return 2 * R * asin(sqrt(h))
+    }
+
+    // ── Role switch: CUSTOMER → DRIVER ─────────────────────────────────────────
+
+    /**
+     * Called by the screen in LaunchedEffect(Unit) to handle the case where this ViewModel
+     * instance is reused after a DRIVER → CUSTOMER switch (Hilt scopes the VM to the
+     * NavBackStackEntry, so it survives the Home-screen role transition).
+     * Resets any stale in-flight phase back to IDLE so the button becomes usable again.
+     */
+    fun onScreenResumed() {
+        val phase = _uiState.value.roleSwitchPhase
+        if (phase != RoleSwitchPhase.IDLE && phase != RoleSwitchPhase.AWAITING_VEHICLE_INFO) {
+            _uiState.update { it.copy(roleSwitchPhase = RoleSwitchPhase.IDLE, roleSwitchError = null) }
+        }
+    }
+
+    /**
+     * Entry point for the "Trở thành tài xế" button.
+     *
+     * Business flow:
+     *  - Case 1 (Lần đầu — chưa có driver profile): POST /driver/switch with null body
+     *    → backend returns 4xx → show vehicle-info form.
+     *  - Case 2 (Các lần sau — đã có profile): POST /driver/switch with null body
+     *    → backend returns new JWT with DRIVER role → success, navigation happens automatically
+     *    via DataStore → HomeScreen recomposes to DriverHomeScreen.
+     *
+     * We do NOT call GET /driver/profile first because that endpoint requires DRIVER role;
+     * calling it as CUSTOMER always returns 403, making it impossible to distinguish
+     * "no profile yet" from "profile exists".
+     */
+    fun onSwitchToDriverClicked() {
+        if (_uiState.value.roleSwitchPhase != RoleSwitchPhase.IDLE) return
+        viewModelScope.launch {
+            _uiState.update { it.copy(roleSwitchPhase = RoleSwitchPhase.SWITCHING, roleSwitchError = null) }
+            switchToDriverUseCase(vehicleInfo = null).fold(
+                onSuccess = {
+                    // JWT updated in DataStore → HomeScreen will recompose to DriverHomeScreen
+                    // automatically. Set IDLE (not DONE) so the same VM instance works
+                    // correctly if the user switches back to CUSTOMER and tries again.
+                    _uiState.update { it.copy(roleSwitchPhase = RoleSwitchPhase.IDLE) }
+                },
+                onFailure = { t ->
+                    val httpCode = (t.cause as? HttpException)?.code() ?: -1
+                    when {
+                        t.cause is java.io.IOException ->
+                            // Network error — show message, don't show form
+                            _uiState.update {
+                                it.copy(
+                                    roleSwitchPhase = RoleSwitchPhase.IDLE,
+                                    roleSwitchError = t.message
+                                        ?: "Không có kết nối mạng. Vui lòng thử lại.",
+                                )
+                            }
+                        httpCode == 401 || httpCode == 403 ->
+                            // Auth error — ask user to re-login
+                            _uiState.update {
+                                it.copy(
+                                    roleSwitchPhase = RoleSwitchPhase.IDLE,
+                                    roleSwitchError = "Phiên đăng nhập hết hạn. Vui lòng đăng nhập lại.",
+                                )
+                            }
+                        httpCode >= 500 ->
+                            // Server error
+                            _uiState.update {
+                                it.copy(
+                                    roleSwitchPhase = RoleSwitchPhase.IDLE,
+                                    roleSwitchError = t.message?.ifBlank { null }
+                                        ?: "Lỗi máy chủ. Vui lòng thử lại sau.",
+                                )
+                            }
+                        else ->
+                            // 400/404/422 or unknown → backend signalling "no vehicle info yet"
+                            _uiState.update {
+                                it.copy(roleSwitchPhase = RoleSwitchPhase.AWAITING_VEHICLE_INFO)
+                            }
+                    }
+                },
+            )
+        }
+    }
+
+    fun onVehiclePlateChange(value: String) =
+        _uiState.update { it.copy(vehicleForm = it.vehicleForm.copy(vehiclePlate = value), roleSwitchError = null) }
+
+    fun onVehicleModelChange(value: String) =
+        _uiState.update { it.copy(vehicleForm = it.vehicleForm.copy(vehicleModel = value), roleSwitchError = null) }
+
+    fun onVehicleColorChange(value: String) =
+        _uiState.update { it.copy(vehicleForm = it.vehicleForm.copy(vehicleColor = value), roleSwitchError = null) }
+
+    fun onLicenseNumberChange(value: String) =
+        _uiState.update { it.copy(vehicleForm = it.vehicleForm.copy(licenseNumber = value), roleSwitchError = null) }
+
+    fun onSubmitVehicleInfo() {
+        val form = _uiState.value.vehicleForm
+        if (form.vehiclePlate.isBlank() ||
+            form.vehicleModel.isBlank() ||
+            form.vehicleColor.isBlank() ||
+            form.licenseNumber.length != 12
+        ) {
+            _uiState.update {
+                it.copy(roleSwitchError = "Nhập đủ thông tin xe và bằng lái 12 chữ số")
+            }
+            return
+        }
+        viewModelScope.launch {
+            _uiState.update { it.copy(roleSwitchPhase = RoleSwitchPhase.SUBMITTING_VEHICLE, roleSwitchError = null) }
+            switchToDriverUseCase(
+                VehicleInfo(
+                    vehiclePlate = form.vehiclePlate.trim(),
+                    vehicleModel = form.vehicleModel.trim(),
+                    vehicleColor = form.vehicleColor.trim(),
+                    licenseNumber = form.licenseNumber.trim()
+                )
+            ).fold(
+                onSuccess = {
+                    // Same as above: navigation is driven by DataStore, reset to IDLE.
+                    _uiState.update { it.copy(roleSwitchPhase = RoleSwitchPhase.IDLE) }
+                },
+                onFailure = { t ->
+                    _uiState.update {
+                        it.copy(
+                            roleSwitchPhase = RoleSwitchPhase.AWAITING_VEHICLE_INFO,
+                            roleSwitchError = t.message ?: "Không thể đăng ký tài xế",
+                        )
+                    }
+                }
+            )
+        }
+    }
+
+    fun onDismissRoleSwitch() {
+        _uiState.update {
+            it.copy(roleSwitchPhase = RoleSwitchPhase.IDLE, roleSwitchError = null)
+        }
     }
 
     override fun onCleared() {
