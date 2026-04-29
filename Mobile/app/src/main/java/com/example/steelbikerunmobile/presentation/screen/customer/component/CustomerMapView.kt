@@ -154,8 +154,19 @@ fun CustomerMapView(
 
 // ── Helpers ────────────────────────────────────────────────────────────────────
 
-/** Create a 60×60 dp circular bitmap marker with an emoji label. */
-private fun createCircleMarker(bgColor: Color, emoji: String): BitmapDescriptor {
+/**
+ * Create a 60×60 dp circular bitmap marker with an emoji label.
+ *
+ * Returns `null` if the Google Maps SDK has not been initialised yet (in which case the
+ * caller falls back to the default Marker icon). This guards against the
+ * `IBitmapDescriptorFactory is not initialized` NPE that occurs when this is invoked from
+ * inside a `remember { ... }` block before the first `GoogleMap` composable has rendered.
+ */
+private fun createCircleMarker(bgColor: Color, emoji: String): BitmapDescriptor? = runCatching {
+    createCircleMarkerInternal(bgColor, emoji)
+}.getOrNull()
+
+private fun createCircleMarkerInternal(bgColor: Color, emoji: String): BitmapDescriptor {
     val size = 96
     val bitmap = Bitmap.createBitmap(size, size, Bitmap.Config.ARGB_8888)
     val canvas = android.graphics.Canvas(bitmap)

@@ -49,7 +49,15 @@ private fun surgeColor(multiplier: Double): Color {
 }
 
 // ── Marker bitmap helpers ─────────────────────────────────────────────────────
-private fun createCircleMarker(emoji: String, bgColor: Color, sizePx: Int = 96): BitmapDescriptor {
+/**
+ * Returns `null` if Maps SDK has not been initialised yet (caller falls back to default
+ * marker icon). Guards against the `IBitmapDescriptorFactory is not initialized` NPE.
+ */
+private fun createCircleMarker(emoji: String, bgColor: Color, sizePx: Int = 96): BitmapDescriptor? = runCatching {
+    createCircleMarkerInternal(emoji, bgColor, sizePx)
+}.getOrNull()
+
+private fun createCircleMarkerInternal(emoji: String, bgColor: Color, sizePx: Int): BitmapDescriptor {
     val bmp = Bitmap.createBitmap(sizePx, sizePx, Bitmap.Config.ARGB_8888)
     val canvas = Canvas(bmp)
     val paint = Paint(Paint.ANTI_ALIAS_FLAG)

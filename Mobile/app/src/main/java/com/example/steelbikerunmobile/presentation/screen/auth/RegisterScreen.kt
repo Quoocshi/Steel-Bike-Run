@@ -9,16 +9,12 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.Email
 import androidx.compose.material.icons.outlined.Person
 import androidx.compose.material.icons.outlined.Phone
-import androidx.compose.material3.FilterChip
-import androidx.compose.material3.FilterChipDefaults
-import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
@@ -34,7 +30,6 @@ import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import com.example.steelbikerunmobile.domain.model.UserRole
 import com.example.steelbikerunmobile.presentation.component.atom.SbPasswordField
 import com.example.steelbikerunmobile.presentation.component.atom.SbPrimaryButton
 import com.example.steelbikerunmobile.presentation.component.atom.SbTextField
@@ -65,7 +60,6 @@ fun RegisterScreen(
         onEmailChange = viewModel::onEmailChange,
         onPhoneChange = viewModel::onPhoneChange,
         onPasswordChange = viewModel::onPasswordChange,
-        onRoleChange = viewModel::onRoleChange,
         onRegister = {
             keyboard?.hide()
             viewModel.register()
@@ -81,7 +75,6 @@ private fun RegisterContent(
     onEmailChange: (String) -> Unit,
     onPhoneChange: (String) -> Unit,
     onPasswordChange: (String) -> Unit,
-    onRoleChange: (UserRole) -> Unit,
     onRegister: () -> Unit,
     onNavigateBackToLogin: () -> Unit,
 ) {
@@ -149,32 +142,6 @@ private fun RegisterContent(
                 onImeAction = onRegister,
             )
 
-            Spacer(modifier = Modifier.height(20.dp))
-
-            // Role selector chips
-            Column(modifier = Modifier.fillMaxWidth()) {
-                Text(
-                    text = "Bạn muốn đăng ký với vai trò",
-                    style = MaterialTheme.typography.labelMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-                Spacer(modifier = Modifier.height(10.dp))
-                Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                    RoleChip(
-                        label = "Khách hàng",
-                        emoji = "\uD83D\uDC64",  // 👤
-                        selected = uiState.role == UserRole.CUSTOMER,
-                        onClick = { onRoleChange(UserRole.CUSTOMER) },
-                    )
-                    RoleChip(
-                        label = "Tài xế",
-                        emoji = "\uD83D\uDEB2",  // 🚲
-                        selected = uiState.role == UserRole.DRIVER,
-                        onClick = { onRoleChange(UserRole.DRIVER) },
-                    )
-                }
-            }
-
             uiState.errorMessage?.let { msg ->
                 Spacer(modifier = Modifier.height(10.dp))
                 Text(
@@ -217,33 +184,6 @@ private fun RegisterContent(
     }
 }
 
-@Composable
-private fun RoleChip(
-    label: String,
-    emoji: String,
-    selected: Boolean,
-    onClick: () -> Unit,
-) {
-    FilterChip(
-        selected = selected,
-        onClick = onClick,
-        label = { Text(label, style = MaterialTheme.typography.labelLarge) },
-        leadingIcon = {
-            Text(text = emoji, modifier = Modifier.size(18.dp))
-        },
-        colors = FilterChipDefaults.filterChipColors(
-            selectedContainerColor = MaterialTheme.colorScheme.primaryContainer,
-            selectedLabelColor     = MaterialTheme.colorScheme.onPrimaryContainer,
-        ),
-        border = FilterChipDefaults.filterChipBorder(
-            enabled = true,
-            selected = selected,
-            borderColor = MaterialTheme.colorScheme.outline,
-            selectedBorderColor = MaterialTheme.colorScheme.primary,
-        ),
-    )
-}
-
 @Preview(showSystemUi = true)
 @Composable
 private fun RegisterPreview() {
@@ -254,7 +194,6 @@ private fun RegisterPreview() {
             onEmailChange = {},
             onPhoneChange = {},
             onPasswordChange = {},
-            onRoleChange = {},
             onRegister = {},
             onNavigateBackToLogin = {},
         )

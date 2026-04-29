@@ -10,8 +10,10 @@ import com.example.steelbikerunmobile.domain.model.SurgeZone
 import com.example.steelbikerunmobile.domain.model.VehicleInfo
 import com.example.steelbikerunmobile.domain.usecase.driver.GetDriverProfileUseCase
 import com.example.steelbikerunmobile.domain.usecase.driver.GetNearbyDriversUseCase
+import com.example.steelbikerunmobile.domain.usecase.driver.SetDriverOnlineStatusUseCase
 import com.example.steelbikerunmobile.domain.usecase.driver.StreamLocationUseCase
-import com.example.steelbikerunmobile.domain.usecase.driver.SwitchDriverOnlineUseCase
+import com.example.steelbikerunmobile.domain.usecase.driver.SwitchToCustomerUseCase
+import com.example.steelbikerunmobile.domain.usecase.driver.SwitchToDriverUseCase
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
@@ -93,7 +95,9 @@ data class DriverHomeUiState(
 @HiltViewModel
 class DriverHomeViewModel @Inject constructor(
     private val getDriverProfileUseCase: GetDriverProfileUseCase,
-    private val switchDriverOnlineUseCase: SwitchDriverOnlineUseCase,
+    private val switchToDriverUseCase: SwitchToDriverUseCase,
+    private val switchToCustomerUseCase: SwitchToCustomerUseCase,
+    private val setDriverOnlineStatusUseCase: SetDriverOnlineStatusUseCase,
     private val streamLocationUseCase: StreamLocationUseCase,
     private val getNearbyDriversUseCase: GetNearbyDriversUseCase,
 ) : ViewModel() {
@@ -229,10 +233,28 @@ class DriverHomeViewModel @Inject constructor(
 
     private fun executeToggleOnline(hasLocationPermission: Boolean) {
         val current = _uiState.value
-        val vehicleInfo = if (current.profile == null) current.toVehicleInfoOrNull() else null
         viewModelScope.launch {
             _uiState.update { it.copy(isLoading = true, errorMessage = null, infoMessage = null) }
-            switchDriverOnlineUseCase(vehicleInfo).fold(
+            // No profile yet → first-time driver setup. The /driver/switch endpoint creates the
+            // profile, sets isOnline=true, and rotates the JWT to role=DRIVER (saved internally).
+            // After that, subsequent online/offline toggles just hit /driver/status.
+            val result = if (current.profile == null) {
+                val vehicleInfo = current.toVehicleInfoOrNull() ?: run {
+                    _uiState.update {
+                        it.copy(
+                            isLoading = false,
+                            errorMessage = "Nhập đủ thông tin xe và bằng lái 12 chữ số",
+                        )
+                    }
+                    return@launch
+                }
+                switchToDriverUseCase(vehicleInfo)
+            } else {
+                val desired = !current.profile.isOnline
+                setDriverOnlineStatusUseCase(desired)
+            }
+
+            result.fold(
                 onSuccess = { profile ->
                     _uiState.update {
                         it.copy(
@@ -246,6 +268,42 @@ class DriverHomeViewModel @Inject constructor(
                 },
                 onFailure = { t ->
                     _uiState.update { it.copy(isLoading = false, errorMessage = t.message ?: "Không thể đổi trạng thái") }
+                }
+            )
+        }
+    }
+
+    // ── Role switch: DRIVER → CUSTOMER ────────────────────────────────────────
+
+    /**
+     * Hit /driver/switch-back so the backend issues a new JWT with role=CUSTOMER.
+     * The repository persists the new token internally; the auth session flow then emits a
+     * CUSTOMER session and the host HomeScreen automatically renders CustomerHomeScreen.
+     */
+    fun switchBackToCustomer() {
+        if (_uiState.value.isLoading) return
+        viewModelScope.launch {
+            _uiState.update { it.copy(isLoading = true, errorMessage = null, infoMessage = null) }
+            switchToCustomerUseCase().fold(
+                onSuccess = {
+                    // Stop streaming GPS — backend has set isOnline=false anyway. The
+                    // session role flips to CUSTOMER as soon as the DataStore write
+                    // propagates, which un-mounts this ViewModel.
+                    stopLocationStream()
+                    _uiState.update {
+                        it.copy(
+                            isLoading = false,
+                            infoMessage = "Đã chuyển về chế độ Khách hàng",
+                        )
+                    }
+                },
+                onFailure = { t ->
+                    _uiState.update {
+                        it.copy(
+                            isLoading = false,
+                            errorMessage = t.message ?: "Không thể chuyển về chế độ Khách hàng",
+                        )
+                    }
                 }
             )
         }
