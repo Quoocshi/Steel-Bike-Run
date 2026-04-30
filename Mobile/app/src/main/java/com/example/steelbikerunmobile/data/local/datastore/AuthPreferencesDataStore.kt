@@ -74,6 +74,18 @@ class AuthPreferencesDataStore @Inject constructor(
         }
     }
 
+    /**
+     * Rotate just the JWT and the role while preserving identity fields (userId, email, fullName).
+     * Used when the server issues a new token after a role switch — we don't want the user to
+     * re-login.
+     */
+    suspend fun updateAccessTokenAndRole(token: String, role: UserRole) {
+        context.dataStore.edit { prefs ->
+            prefs[tokenKey] = token
+            prefs[roleKey] = role.name
+        }
+    }
+
     suspend fun clear() {
         context.dataStore.edit { it.clear() }
     }

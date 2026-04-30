@@ -23,7 +23,6 @@ data class RegisterUiState(
     val phoneError: String? = null,
     val password: String = "",
     val passwordError: String? = null,
-    val role: UserRole = UserRole.CUSTOMER,
     val isLoading: Boolean = false,
     val errorMessage: String? = null,
     val registerSuccess: Boolean = false,
@@ -48,9 +47,6 @@ class RegisterViewModel @Inject constructor(
 
     fun onPasswordChange(value: String) =
         _uiState.update { it.copy(password = value, passwordError = null, errorMessage = null) }
-
-    fun onRoleChange(role: UserRole) =
-        _uiState.update { it.copy(role = role, errorMessage = null) }
 
     fun register() {
         val s = _uiState.value
@@ -79,7 +75,7 @@ class RegisterViewModel @Inject constructor(
                     phone    = s.phone.trim(),
                     password = s.password,
                     fullName = s.fullName.trim(),
-                    role     = s.role,
+                    role     = UserRole.CUSTOMER,
                 )
             )
             _uiState.update {

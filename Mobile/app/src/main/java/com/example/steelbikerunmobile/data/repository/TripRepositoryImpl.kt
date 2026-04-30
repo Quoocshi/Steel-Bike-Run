@@ -1,5 +1,6 @@
 package com.example.steelbikerunmobile.data.repository
 
+import com.example.steelbikerunmobile.data.remote.NetworkErrorMapper
 import com.example.steelbikerunmobile.data.remote.api.TripApiService
 import com.example.steelbikerunmobile.data.remote.dto.CreateTripRequestDto
 import com.example.steelbikerunmobile.data.remote.dto.PriceEstimateDto
@@ -18,25 +19,26 @@ class TripRepositoryImpl @Inject constructor(
     private val tripApiService: TripApiService
 ) : TripRepository {
 
-    override suspend fun estimate(draft: BookingDraft): Result<PriceEstimate> {
-        return runCatching {
+    override suspend fun estimate(draft: BookingDraft): Result<PriceEstimate> =
+        NetworkErrorMapper.safeCall {
             val envelope = tripApiService.estimate(draft.toEstimateDto())
-            envelope.data?.toDomain() ?: error(envelope.message.ifBlank { "Không thể tính giá" })
+            envelope.data?.toDomain()
+                ?: error(envelope.message?.takeIf { it.isNotBlank() } ?: "Không thể tính giá")
         }.recover { estimateLocally(draft) }
-    }
 
-    override suspend fun createTrip(draft: BookingDraft): Result<Unit> = runCatching {
-        tripApiService.createTrip(
-            CreateTripRequestDto(
-                pickupLat = draft.pickup.latitude,
-                pickupLng = draft.pickup.longitude,
-                destLat = draft.destination.latitude,
-                destLng = draft.destination.longitude,
-                destAddress = draft.destinationAddress
+    override suspend fun createTrip(draft: BookingDraft): Result<Unit> =
+        NetworkErrorMapper.safeCall {
+            tripApiService.createTrip(
+                CreateTripRequestDto(
+                    pickupLat = draft.pickup.latitude,
+                    pickupLng = draft.pickup.longitude,
+                    destLat = draft.destination.latitude,
+                    destLng = draft.destination.longitude,
+                    destAddress = draft.destinationAddress
+                )
             )
-        )
-        Unit
-    }
+            Unit
+        }
 
     private fun BookingDraft.toEstimateDto(): PriceEstimateRequestDto {
         return PriceEstimateRequestDto(

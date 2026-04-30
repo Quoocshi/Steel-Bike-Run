@@ -251,7 +251,7 @@ private fun CountdownArc(seconds: Int, total: Int) {
     val arcColor = when {
         progress > 0.5f -> DriverOrange
         progress > 0.25f -> Color(0xFFFFA726)
-        else -> FailRed
+        else -> Color(0xFFEF5350)
     }
     Box(modifier = Modifier.size(52.dp), contentAlignment = Alignment.Center) {
         Canvas(modifier = Modifier.fillMaxSize()) {

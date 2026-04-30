@@ -1,0 +1,22 @@
+{
+  "repoId": "6b1b8b92-b08d-4cae-88bc-5ab7054b5d22",
+  "repoName": "SteelBikeRun",
+  "server": "https://api.grapuco.com",
+  "language": "kotlin",
+  "features": {
+    "embeddings": true,
+    "dataFlowAnalysis": true
+  },
+  "ignore": [
+    "node_modules",
+    "dist",
+    ".next",
+    ".git",
+    ".grapuco",
+    "__pycache__",
+    "vendor",
+    "target",
+    "build"
+  ],
+  "lastPush": "2026-04-11T04:52:28.218Z"
+}
