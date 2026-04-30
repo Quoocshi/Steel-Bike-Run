@@ -2,6 +2,7 @@ package com.example.steelbikerunmobile.domain.repository
 
 import com.example.steelbikerunmobile.domain.model.AuthSession
 import com.example.steelbikerunmobile.domain.model.RegisterPayload
+import com.example.steelbikerunmobile.domain.model.UserRole
 import kotlinx.coroutines.flow.Flow
 
 interface AuthRepository {
@@ -10,4 +11,10 @@ interface AuthRepository {
     fun observeToken(): Flow<String?>
     fun observeSession(): Flow<AuthSession?>
     suspend fun logout()
+
+    /**
+     * Replace the locally-stored JWT and role after the server rotates the token on a role switch.
+     * Identity fields (userId, fullName, email) are preserved.
+     */
+    suspend fun updateAccessToken(token: String, role: UserRole)
 }

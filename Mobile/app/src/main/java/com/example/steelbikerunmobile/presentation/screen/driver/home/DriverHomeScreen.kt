@@ -30,6 +30,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ExitToApp
+import androidx.compose.material.icons.outlined.PersonOutline
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.CircularProgressIndicator
@@ -111,6 +112,8 @@ fun DriverHomeScreen(
         // ── Layer 2: Top bar (floating) ───────────────────────────────────────
         DriverTopBar(
             isOnline = uiState.profile?.isOnline == true,
+            onSwitchToCustomer = viewModel::switchBackToCustomer,
+            isSwitchingRole = uiState.isLoading,
             onLogout = onLogout,
             modifier = Modifier
                 .align(Alignment.TopCenter)
@@ -195,6 +198,8 @@ fun DriverHomeScreen(
 @Composable
 private fun DriverTopBar(
     isOnline: Boolean,
+    onSwitchToCustomer: () -> Unit,
+    isSwitchingRole: Boolean,
     onLogout: () -> Unit,
     modifier: Modifier = Modifier
 ) {
@@ -231,13 +236,35 @@ private fun DriverTopBar(
             }
         }
 
-        // Logout button
-        Surface(
-            shape = CircleShape,
-            color = PanelBg.copy(alpha = 0.88f)
+        Row(
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            verticalAlignment = Alignment.CenterVertically,
         ) {
-            IconButton(onClick = onLogout) {
-                Icon(Icons.Default.ExitToApp, contentDescription = "Đăng xuất", tint = Color.White.copy(alpha = 0.7f))
+            // Switch-back-to-Customer button
+            Surface(
+                shape = CircleShape,
+                color = PanelBg.copy(alpha = 0.88f)
+            ) {
+                IconButton(
+                    onClick = onSwitchToCustomer,
+                    enabled = !isSwitchingRole,
+                ) {
+                    Icon(
+                        Icons.Outlined.PersonOutline,
+                        contentDescription = "Về chế độ Khách hàng",
+                        tint = Color.White.copy(alpha = if (isSwitchingRole) 0.35f else 0.85f)
+                    )
+                }
+            }
+
+            // Logout button
+            Surface(
+                shape = CircleShape,
+                color = PanelBg.copy(alpha = 0.88f)
+            ) {
+                IconButton(onClick = onLogout) {
+                    Icon(Icons.Default.ExitToApp, contentDescription = "Đăng xuất", tint = Color.White.copy(alpha = 0.7f))
+                }
             }
         }
     }
