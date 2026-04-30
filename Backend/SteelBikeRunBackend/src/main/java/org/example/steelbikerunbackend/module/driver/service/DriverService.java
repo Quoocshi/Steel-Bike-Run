@@ -26,184 +26,209 @@ import java.util.Optional;
 @RequiredArgsConstructor
 public class DriverService {
 
-    private final UserRepository userRepository;
-    private final DriverRepository driverRepository;
-    private final DriverProfileCacheRepository cacheRepository;
-    private final UserProfileCacheRepository userProfileCacheRepository;
-    private final JwtUtil jwtUtil;
+        private final UserRepository userRepository;
+        private final DriverRepository driverRepository;
+        private final DriverProfileCacheRepository cacheRepository;
+        private final UserProfileCacheRepository userProfileCacheRepository;
+        private final JwtUtil jwtUtil;
 
-    // khi user bấm nút "Chuyển sang lái xe", hàm này sẽ chạy
-    // lần đầu thì bắt buộc phải nhập thông tin xe, lần sau thì thôi
-    @Transactional
-    public SwitchRoleResponse switchToDriver(String userEmail, SwitchDriverRequest request) {
+        /**
+         * Chuyển user sang chế độ Driver.
+         *
+         * <ul>
+         * <li><b>Lần đầu tiên</b>: bắt buộc cung cấp thông tin xe để tạo profile
+         * → tự động set {@code isOnline = true}.</li>
+         * <li><b>Các lần sau</b>: profile đã tồn tại, chỉ đảm bảo
+         * {@code isOnline = true} (luôn online khi switch sang Driver).</li>
+         * </ul>
+         *
+         * @param userEmail email lấy từ JWT (principal)
+         * @param request   thông tin xe — bắt buộc khi tạo profile lần đầu
+         */
+        @Transactional
+        public SwitchRoleResponse switchToDriver(String userEmail, SwitchDriverRequest request) {
 
-        User user = userRepository.findByEmail(userEmail)
-                .orElseThrow(() -> new AppException(ErrorCode.USER_NOT_FOUND));
+                User user = userRepository.findByEmail(userEmail)
+                                .orElseThrow(() -> new AppException(ErrorCode.USER_NOT_FOUND));
 
-        // chỉ customer mới được switch, driver đang chạy thì switch làm gì :))
-        if (user.getRole() != UserRole.CUSTOMER) {
-            throw new AppException(ErrorCode.ACCESS_DENIED,
-                    "Chỉ tài khoản CUSTOMER mới có thể chuyển sang chế độ Driver");
+                // Chỉ CUSTOMER mới có thể switch sang Driver
+                if (user.getRole() != UserRole.CUSTOMER) {
+                        throw new AppException(ErrorCode.ACCESS_DENIED,
+                                        "Chỉ tài khoản CUSTOMER mới có thể chuyển sang chế độ Driver");
+                }
+
+                Optional<Driver> existing = driverRepository.findByUserIdWithUser(user.getId());
+
+                // Profile đã tồn tại → đảm bảo isOnline = true và role = DRIVER
+                if (existing.isPresent()) {
+                        Driver driver = existing.get();
+
+                        // Cập nhật trạng thái online nếu chưa online
+                        if (!driver.isOnline()) {
+                                driver.setOnline(true);
+                                driver = driverRepository.save(driver);
+                                cacheRepository.evict(userEmail);
+                        }
+
+                        // Cập nhật role sang DRIVER
+                        user.setRole(UserRole.DRIVER);
+                        userRepository.save(user);
+                        userProfileCacheRepository.evict(userEmail);
+
+                        String token = jwtUtil.generateToken(user.getEmail(), UserRole.DRIVER.name());
+                        log.info("Driver [{}] switched to Driver mode → role=DRIVER, Online", user.getEmail());
+                        return SwitchRoleResponse.of(token, DriverProfileResponse.from(driver, false));
+                }
+
+                // Profile chưa tồn tại → validate vehicle info rồi tạo mới
+                if (request == null) {
+                        throw new AppException(ErrorCode.BAD_REQUEST,
+                                        "Cần cung cấp thông tin xe để kích hoạt lần đầu");
+                }
+                if (driverRepository.existsByVehiclePlate(request.vehiclePlate())) {
+                        throw new AppException(ErrorCode.BAD_REQUEST,
+                                        "Biển số xe '" + request.vehiclePlate() + "' đã được đăng ký");
+                }
+                if (driverRepository.existsByLicenseNumber(request.licenseNumber())) {
+                        throw new AppException(ErrorCode.BAD_REQUEST,
+                                        "Số bằng lái '" + request.licenseNumber() + "' đã được đăng ký");
+                }
+
+                Driver newDriver = Driver.builder()
+                                .user(user)
+                                .vehiclePlate(request.vehiclePlate().toUpperCase().trim())
+                                .vehicleModel(request.vehicleModel().trim())
+                                .vehicleColor(request.vehicleColor().trim())
+                                .licenseNumber(request.licenseNumber().trim())
+                                .isOnline(true) // Luôn online ngay sau khi tạo profile
+                                .rating(5.0f)
+                                .totalTrips(0)
+                                .faceScanPassed(false)
+                                .build();
+
+                newDriver = driverRepository.save(newDriver);
+
+                // Cập nhật role sang DRIVER
+                user.setRole(UserRole.DRIVER);
+                userRepository.save(user);
+                userProfileCacheRepository.evict(userEmail);
+
+                DriverProfileResponse newResponse = DriverProfileResponse.from(newDriver, true);
+                cacheRepository.put(userEmail, newResponse);
+
+                String token = jwtUtil.generateToken(user.getEmail(), UserRole.DRIVER.name());
+                log.info("Driver profile CREATED for user [{}], vehiclePlate={}, role=DRIVER",
+                                user.getEmail(), newDriver.getVehiclePlate());
+                return SwitchRoleResponse.of(token, newResponse);
         }
 
-        // kiểm tra xem user này đã từng đăng ký tài xế chưa
-        Optional<Driver> existing = driverRepository.findByUserIdWithUser(user.getId());
+        /**
+         * Chuyển tài xế về chế độ Customer.
+         *
+         * <p>
+         * Set {@code isOnline = false} và evict cache. Chỉ DRIVER mới
+         * được gọi endpoint này.
+         * </p>
+         *
+         * @param userEmail email lấy từ JWT (principal)
+         */
+        @Transactional
+        public SwitchRoleResponse switchToCustomer(String userEmail) {
 
-        // nếu đã có profile rồi thì chỉ cần bật online + đổi role là xong
-        if (existing.isPresent()) {
-            Driver driver = existing.get();
+                User user = userRepository.findByEmail(userEmail)
+                                .orElseThrow(() -> new AppException(ErrorCode.USER_NOT_FOUND));
 
-            // bật online nếu đang offline (có thể họ vừa switch về customer xong switch lại)
-            if (!driver.isOnline()) {
-                driver.setOnline(true);
+                // Chỉ DRIVER mới có thể switch về Customer
+                if (user.getRole() != UserRole.DRIVER) {
+                        throw new AppException(ErrorCode.ACCESS_DENIED,
+                                        "Chỉ tài khoản DRIVER mới có thể chuyển về chế độ Customer");
+                }
+
+                Driver driver = driverRepository.findByUserIdWithUser(user.getId())
+                                .orElseThrow(() -> new AppException(ErrorCode.BAD_REQUEST,
+                                                "Profile Driver chưa tồn tại"));
+
+                // Set offline trước khi về Customer mode
+                if (driver.isOnline()) {
+                        driver.setOnline(false);
+                        driver = driverRepository.save(driver);
+                        cacheRepository.evict(userEmail);
+                }
+
+                // Cập nhật role về CUSTOMER
+                user.setRole(UserRole.CUSTOMER);
+                userRepository.save(user);
+                userProfileCacheRepository.evict(userEmail);
+
+                String token = jwtUtil.generateToken(user.getEmail(), UserRole.CUSTOMER.name());
+                log.info("Driver [{}] switched back to Customer mode → role=CUSTOMER, Offline", user.getEmail());
+                return SwitchRoleResponse.of(token, DriverProfileResponse.from(driver, false));
+        }
+
+        /**
+         * Cập nhật trạng thái online/offline của tài xế.
+         *
+         * <p>
+         * Chỉ DRIVER được gọi. Không liên quan đến việc switch role.
+         * </p>
+         *
+         * @param userEmail email lấy từ JWT
+         * @param request   {@link DriverStatusRequest} chứa trạng thái mong muốn
+         */
+        @Transactional
+        public DriverProfileResponse setOnlineStatus(String userEmail, DriverStatusRequest request) {
+
+                User user = userRepository.findByEmail(userEmail)
+                                .orElseThrow(() -> new AppException(ErrorCode.USER_NOT_FOUND));
+
+                Driver driver = driverRepository.findByUserIdWithUser(user.getId())
+                                .orElseThrow(() -> new AppException(ErrorCode.BAD_REQUEST,
+                                                "Profile Driver chưa tồn tại. Hãy gọi /driver/switch trước."));
+
+                boolean desired = request.isOnline();
+                if (driver.isOnline() == desired) {
+                        log.info("Driver [{}] status already {}, no-op", user.getEmail(),
+                                        desired ? "Online" : "Offline");
+                        return DriverProfileResponse.from(driver, false);
+                }
+
+                driver.setOnline(desired);
                 driver = driverRepository.save(driver);
-                cacheRepository.evict(userEmail); // cache cũ sai rồi, xóa đi
-            }
+                cacheRepository.evict(userEmail);
 
-            // cập nhật role trong DB và xóa cache user để lần sau đọc lại đúng
-            user.setRole(UserRole.DRIVER);
-            userRepository.save(user);
-            userProfileCacheRepository.evict(userEmail);
-
-            // tạo token mới với role DRIVER luôn, mobile khỏi cần login lại
-            String token = jwtUtil.generateToken(user.getEmail(), UserRole.DRIVER.name());
-            log.info("Driver [{}] switched to Driver mode → role=DRIVER, Online", user.getEmail());
-            return SwitchRoleResponse.of(token, DriverProfileResponse.from(driver, false));
+                log.info("Driver [{}] status updated → {}", user.getEmail(),
+                                desired ? "Online" : "Offline");
+                return DriverProfileResponse.from(driver, false);
         }
 
-        // chưa có profile → lần đầu đăng ký làm tài xế, cần thông tin xe
-        if (request == null) {
-            throw new AppException(ErrorCode.BAD_REQUEST,
-                    "Cần cung cấp thông tin xe để kích hoạt lần đầu");
+        /**
+         * Lấy profile Driver theo email của user đang đăng nhập.
+         *
+         * <p>
+         * Cache-Aside pattern:
+         * <ol>
+         * <li>Kiểm tra Redis trước (HIT → trả về ngay).</li>
+         * <li>MISS → query DB → lưu vào Redis → trả về.</li>
+         * </ol>
+         */
+        @Transactional(readOnly = true)
+        public DriverProfileResponse getMyProfile(String userEmail) {
+
+                return cacheRepository.get(userEmail).orElseGet(() -> {
+
+                        User user = userRepository.findByEmail(userEmail)
+                                        .orElseThrow(() -> new AppException(ErrorCode.USER_NOT_FOUND));
+
+                        Driver driver = driverRepository.findByUserIdWithUser(user.getId())
+                                        .orElseThrow(() -> new AppException(ErrorCode.BAD_REQUEST,
+                                                        "Profile Driver chưa tồn tại. Hãy gọi /driver/switch trước."));
+
+                        DriverProfileResponse response = DriverProfileResponse.from(driver, false);
+
+                        cacheRepository.put(userEmail, response);
+                        log.info("[Cache] Driver profile loaded from DB and cached: {}", userEmail);
+
+                        return response;
+                });
         }
-
-        // kiểm tra biển số và bằng lái xem có bị trùng không
-        if (driverRepository.existsByVehiclePlate(request.vehiclePlate())) {
-            throw new AppException(ErrorCode.BAD_REQUEST,
-                    "Biển số xe '" + request.vehiclePlate() + "' đã được đăng ký");
-        }
-        if (driverRepository.existsByLicenseNumber(request.licenseNumber())) {
-            throw new AppException(ErrorCode.BAD_REQUEST,
-                    "Số bằng lái '" + request.licenseNumber() + "' đã được đăng ký");
-        }
-
-        // tạo mới driver, mặc định online luôn và rating khởi điểm 5 sao
-        Driver newDriver = Driver.builder()
-                .user(user)
-                .vehiclePlate(request.vehiclePlate().toUpperCase().trim())
-                .vehicleModel(request.vehicleModel().trim())
-                .vehicleColor(request.vehicleColor().trim())
-                .licenseNumber(request.licenseNumber().trim())
-                .isOnline(true) // vừa đăng ký xong thì online luôn cho nóng
-                .rating(5.0f)
-                .totalTrips(0)
-                .faceScanPassed(false)
-                .build();
-
-        newDriver = driverRepository.save(newDriver);
-
-        // đổi role user → DRIVER và dọn cache cũ
-        user.setRole(UserRole.DRIVER);
-        userRepository.save(user);
-        userProfileCacheRepository.evict(userEmail);
-
-        // cache profile mới luôn để lần sau khỏi query DB
-        DriverProfileResponse newResponse = DriverProfileResponse.from(newDriver, true);
-        cacheRepository.put(userEmail, newResponse);
-
-        // trả token mới có role DRIVER kèm profile
-        String token = jwtUtil.generateToken(user.getEmail(), UserRole.DRIVER.name());
-        log.info("Driver profile CREATED for user [{}], vehiclePlate={}, role=DRIVER",
-                user.getEmail(), newDriver.getVehiclePlate());
-        return SwitchRoleResponse.of(token, newResponse);
-    }
-
-    // khi tài xế muốn quay về làm khách hàng bình thường
-    @Transactional
-    public SwitchRoleResponse switchToCustomer(String userEmail) {
-
-        User user = userRepository.findByEmail(userEmail)
-                .orElseThrow(() -> new AppException(ErrorCode.USER_NOT_FOUND));
-
-        // ngược lại với trên, chỉ DRIVER mới được gọi cái này
-        if (user.getRole() != UserRole.DRIVER) {
-            throw new AppException(ErrorCode.ACCESS_DENIED,
-                    "Chỉ tài khoản DRIVER mới có thể chuyển về chế độ Customer");
-        }
-
-        Driver driver = driverRepository.findByUserIdWithUser(user.getId())
-                .orElseThrow(() -> new AppException(ErrorCode.BAD_REQUEST,
-                        "Profile Driver chưa tồn tại"));
-
-        // tắt online trước khi về, không để driver "ma" trôi nổi trong hệ thống
-        if (driver.isOnline()) {
-            driver.setOnline(false);
-            driver = driverRepository.save(driver);
-            cacheRepository.evict(userEmail);
-        }
-
-        // đổi role về CUSTOMER và xóa cache
-        user.setRole(UserRole.CUSTOMER);
-        userRepository.save(user);
-        userProfileCacheRepository.evict(userEmail);
-
-        // trả token mới có role CUSTOMER, mobile tự lưu đè token cũ
-        String token = jwtUtil.generateToken(user.getEmail(), UserRole.CUSTOMER.name());
-        log.info("Driver [{}] switched back to Customer mode → role=CUSTOMER, Offline", user.getEmail());
-        return SwitchRoleResponse.of(token, DriverProfileResponse.from(driver, false));
-    }
-
-    // tài xế đang ở driver mode muốn bật/tắt online (không liên quan đến switch role)
-    // ví dụ: nghỉ ăn cơm 30 phút thì offline, ăn xong bật lại
-    @Transactional
-    public DriverProfileResponse setOnlineStatus(String userEmail, DriverStatusRequest request) {
-
-        User user = userRepository.findByEmail(userEmail)
-                .orElseThrow(() -> new AppException(ErrorCode.USER_NOT_FOUND));
-
-        Driver driver = driverRepository.findByUserIdWithUser(user.getId())
-                .orElseThrow(() -> new AppException(ErrorCode.BAD_REQUEST,
-                        "Profile Driver chưa tồn tại. Hãy gọi /driver/switch trước."));
-
-        boolean desired = request.isOnline();
-
-        // nếu trạng thái đã đúng rồi thì thôi, không cần làm gì cả
-        if (driver.isOnline() == desired) {
-            log.info("Driver [{}] status already {}, no-op", user.getEmail(),
-                    desired ? "Online" : "Offline");
-            return DriverProfileResponse.from(driver, false);
-        }
-
-        driver.setOnline(desired);
-        driver = driverRepository.save(driver);
-        cacheRepository.evict(userEmail); // trạng thái đổi rồi thì cache cũ vứt đi
-
-        log.info("Driver [{}] status updated → {}", user.getEmail(),
-                desired ? "Online" : "Offline");
-        return DriverProfileResponse.from(driver, false);
-    }
-
-    // lấy thông tin profile driver, ưu tiên đọc từ Redis trước cho nhanh
-    @Transactional(readOnly = true)
-    public DriverProfileResponse getMyProfile(String userEmail) {
-
-        // cache hit → trả về ngay, không cần đụng DB
-        return cacheRepository.get(userEmail).orElseGet(() -> {
-
-            // cache miss → query DB rồi lưu lại để lần sau dùng
-            User user = userRepository.findByEmail(userEmail)
-                    .orElseThrow(() -> new AppException(ErrorCode.USER_NOT_FOUND));
-
-            Driver driver = driverRepository.findByUserIdWithUser(user.getId())
-                    .orElseThrow(() -> new AppException(ErrorCode.BAD_REQUEST,
-                            "Profile Driver chưa tồn tại. Hãy gọi /driver/switch trước."));
-
-            DriverProfileResponse response = DriverProfileResponse.from(driver, false);
-
-            cacheRepository.put(userEmail, response);
-            log.info("[Cache] Driver profile loaded from DB and cached: {}", userEmail);
-
-            return response;
-        });
-    }
 }
