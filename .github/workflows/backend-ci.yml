@@ -1,16 +1,18 @@
-name: Backend CI/CD — develop
+name: Backend CI/CD — develop & main
 
-# Chỉ trigger khi push/PR vào nhánh develop,
+# Trigger khi push hoặc PR vào nhánh develop hoặc main,
 # VÀ chỉ khi có thay đổi bên trong thư mục Backend/
 on:
   push:
     branches:
       - develop
+      - main
     paths:
       - 'Backend/**'
   pull_request:
     branches:
       - develop
+      - main
     paths:
       - 'Backend/**'
 
