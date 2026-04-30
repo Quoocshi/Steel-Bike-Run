@@ -3,11 +3,16 @@ package org.example.steelbikerunbackend.module.driver;
 import org.example.steelbikerunbackend.common.enums.UserRole;
 import org.example.steelbikerunbackend.common.exception.AppException;
 import org.example.steelbikerunbackend.common.exception.ErrorCode;
+import org.example.steelbikerunbackend.common.security.JwtUtil;
+import org.example.steelbikerunbackend.module.driver.cache.DriverProfileCacheRepository;
 import org.example.steelbikerunbackend.module.driver.dto.DriverProfileResponse;
+import org.example.steelbikerunbackend.module.driver.dto.DriverStatusRequest;
 import org.example.steelbikerunbackend.module.driver.dto.SwitchDriverRequest;
+import org.example.steelbikerunbackend.module.driver.dto.SwitchRoleResponse;
 import org.example.steelbikerunbackend.module.driver.entity.Driver;
 import org.example.steelbikerunbackend.module.driver.repository.DriverRepository;
 import org.example.steelbikerunbackend.module.driver.service.DriverService;
+import org.example.steelbikerunbackend.module.user.cache.UserProfileCacheRepository;
 import org.example.steelbikerunbackend.module.user.entity.User;
 import org.example.steelbikerunbackend.module.user.repository.UserRepository;
 import org.junit.jupiter.api.BeforeEach;
@@ -26,7 +31,6 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.*;
 
-// Kiểm tra logic nghiệp vụ của DriverService với Mockito, không dùng database thực
 @ExtendWith(MockitoExtension.class)
 class DriverServiceTest {
 
@@ -36,297 +40,139 @@ class DriverServiceTest {
     @Mock
     private DriverRepository driverRepository;
 
+    @Mock
+    private DriverProfileCacheRepository cacheRepository;
+
+    @Mock
+    private UserProfileCacheRepository userProfileCacheRepository;
+
+    @Mock
+    private JwtUtil jwtUtil;
+
     @InjectMocks
     private DriverService driverService;
 
-    private User driverUser;
     private User customerUser;
+    private User driverUser;
     private SwitchDriverRequest switchRequest;
     private Driver existingDriver;
 
     @BeforeEach
     void setUp() {
-        UUID userId = UUID.randomUUID();
-
-        driverUser = User.builder()
-                .id(userId)
-                .email("driver@example.com")
-                .phone("0911111111")
-                .passwordHash("hashed")
-                .fullName("Nguyen Tai Xe")
-                .role(UserRole.DRIVER)
-                .isActive(true)
-                .build();
-
         customerUser = User.builder()
                 .id(UUID.randomUUID())
                 .email("customer@example.com")
-                .phone("0922222222")
-                .passwordHash("hashed")
-                .fullName("Nguyen Khach Hang")
                 .role(UserRole.CUSTOMER)
-                .isActive(true)
                 .build();
 
-        switchRequest = new SwitchDriverRequest(
-                "51G-123.45",
-                "Honda Air Blade 150",
-                "Den",
-                "012345678901");
+        driverUser = User.builder()
+                .id(UUID.randomUUID())
+                .email("driver@example.com")
+                .role(UserRole.DRIVER)
+                .build();
+
+        switchRequest = new SwitchDriverRequest("51G-123.45", "Honda", "Black", "012345678901");
 
         existingDriver = Driver.builder()
                 .id(UUID.randomUUID())
                 .user(driverUser)
                 .vehiclePlate("51G-123.45")
-                .vehicleModel("Honda Air Blade 150")
-                .vehicleColor("Den")
-                .licenseNumber("012345678901")
                 .isOnline(false)
-                .rating(5.0f)
-                .totalTrips(0)
-                .faceScanPassed(false)
                 .build();
     }
 
-    // switchDriver - trường hợp tạo profile mới
-
     @Test
-    @DisplayName("switchDriver tạo profile mới khi tài xế chưa có profile")
-    void switchDriver_shouldCreateNewProfile_whenDriverProfileNotExist() {
-        // Arrange
-        when(userRepository.findByEmail("driver@example.com")).thenReturn(Optional.of(driverUser));
-        when(driverRepository.findByUserIdWithUser(driverUser.getId())).thenReturn(Optional.empty());
-        when(driverRepository.existsByVehiclePlate("51G-123.45")).thenReturn(false);
-        when(driverRepository.existsByLicenseNumber("012345678901")).thenReturn(false);
-        when(driverRepository.save(any(Driver.class))).thenReturn(existingDriver);
+    @DisplayName("switchToDriver: Thành công tạo mới profile")
+    void switchToDriver_CreateNew() {
+        when(userRepository.findByEmail(customerUser.getEmail())).thenReturn(Optional.of(customerUser));
+        when(driverRepository.findByUserIdWithUser(customerUser.getId())).thenReturn(Optional.empty());
+        when(driverRepository.save(any(Driver.class))).thenAnswer(i -> i.getArgument(0));
+        when(jwtUtil.generateToken(customerUser.getEmail(), UserRole.DRIVER.name())).thenReturn("mock-jwt-token");
 
-        // Act
-        DriverProfileResponse response = driverService.switchDriver("driver@example.com", switchRequest);
+        SwitchRoleResponse response = driverService.switchToDriver(customerUser.getEmail(), switchRequest);
 
-        // Assert: phải là profile mới và trạng thái online là true
-        assertThat(response).isNotNull();
-        assertThat(response.isNewProfile()).isTrue();
-        assertThat(response.vehiclePlate()).isEqualTo("51G-123.45");
-
-        verify(driverRepository).save(any(Driver.class));
+        assertThat(response.accessToken()).isEqualTo("mock-jwt-token");
+        assertThat(response.driverProfile().isOnline()).isTrue();
+        assertThat(response.driverProfile().isNewProfile()).isTrue();
+        verify(userRepository).save(customerUser);
     }
 
     @Test
-    @DisplayName("switchDriver toggle từ offline sang online khi đã có profile")
-    void switchDriver_shouldToggleOnline_whenProfileExistsAndCurrentlyOffline() {
-        // Arrange: profile đã tồn tại và đang offline
-        Driver offlineDriver = Driver.builder()
-                .id(UUID.randomUUID())
-                .user(driverUser)
-                .vehiclePlate("51G-123.45")
-                .vehicleModel("Honda Air Blade 150")
-                .vehicleColor("Den")
-                .licenseNumber("012345678901")
-                .isOnline(false)
-                .rating(5.0f)
-                .totalTrips(0)
-                .faceScanPassed(false)
-                .build();
+    @DisplayName("switchToDriver: Thành công dùng profile cũ")
+    void switchToDriver_ExistingProfile() {
+        when(userRepository.findByEmail(customerUser.getEmail())).thenReturn(Optional.of(customerUser));
+        when(driverRepository.findByUserIdWithUser(customerUser.getId())).thenReturn(Optional.of(existingDriver));
+        when(driverRepository.save(any(Driver.class))).thenAnswer(i -> i.getArgument(0));
+        when(jwtUtil.generateToken(customerUser.getEmail(), UserRole.DRIVER.name())).thenReturn("mock-jwt-token");
 
-        Driver onlineDriver = Driver.builder()
-                .id(offlineDriver.getId())
-                .user(driverUser)
-                .vehiclePlate("51G-123.45")
-                .vehicleModel("Honda Air Blade 150")
-                .vehicleColor("Den")
-                .licenseNumber("012345678901")
-                .isOnline(true)
-                .rating(5.0f)
-                .totalTrips(0)
-                .faceScanPassed(false)
-                .build();
+        SwitchRoleResponse response = driverService.switchToDriver(customerUser.getEmail(), switchRequest);
 
-        when(userRepository.findByEmail("driver@example.com")).thenReturn(Optional.of(driverUser));
-        when(driverRepository.findByUserIdWithUser(driverUser.getId())).thenReturn(Optional.of(offlineDriver));
-        when(driverRepository.save(offlineDriver)).thenReturn(onlineDriver);
+        assertThat(response.accessToken()).isEqualTo("mock-jwt-token");
+        assertThat(response.driverProfile().isOnline()).isTrue();
+        verify(userRepository).save(customerUser);
+    }
 
-        // Act
-        DriverProfileResponse response = driverService.switchDriver("driver@example.com", switchRequest);
+    @Test
+    @DisplayName("switchToDriver: Thất bại nếu không phải CUSTOMER")
+    void switchToDriver_FailIfNotCustomer() {
+        when(userRepository.findByEmail(driverUser.getEmail())).thenReturn(Optional.of(driverUser));
 
-        // Assert: phải chuyển sang online và không phải profile mới
+        assertThatThrownBy(() -> driverService.switchToDriver(driverUser.getEmail(), switchRequest))
+                .isInstanceOf(AppException.class)
+                .hasMessageContaining("Chỉ tài khoản CUSTOMER");
+    }
+
+    @Test
+    @DisplayName("switchToCustomer: Thành công")
+    void switchToCustomer_Success() {
+        existingDriver.setOnline(true);
+        when(userRepository.findByEmail(driverUser.getEmail())).thenReturn(Optional.of(driverUser));
+        when(driverRepository.findByUserIdWithUser(driverUser.getId())).thenReturn(Optional.of(existingDriver));
+        when(driverRepository.save(any(Driver.class))).thenAnswer(i -> i.getArgument(0));
+        when(jwtUtil.generateToken(driverUser.getEmail(), UserRole.CUSTOMER.name())).thenReturn("mock-jwt-token");
+
+        SwitchRoleResponse response = driverService.switchToCustomer(driverUser.getEmail());
+
+        assertThat(response.accessToken()).isEqualTo("mock-jwt-token");
+        assertThat(response.driverProfile().isOnline()).isFalse();
+        verify(userRepository).save(driverUser);
+    }
+
+    @Test
+    @DisplayName("setOnlineStatus: Thành công cập nhật status")
+    void setOnlineStatus_Success() {
+        when(userRepository.findByEmail(driverUser.getEmail())).thenReturn(Optional.of(driverUser));
+        when(driverRepository.findByUserIdWithUser(driverUser.getId())).thenReturn(Optional.of(existingDriver));
+        when(driverRepository.save(any(Driver.class))).thenAnswer(i -> i.getArgument(0));
+
+        DriverProfileResponse response = driverService.setOnlineStatus(driverUser.getEmail(), new DriverStatusRequest(true));
+
         assertThat(response.isOnline()).isTrue();
-        assertThat(response.isNewProfile()).isFalse();
+        verify(driverRepository).save(existingDriver);
     }
 
     @Test
-    @DisplayName("switchDriver toggle từ online sang offline khi đã có profile và đang online")
-    void switchDriver_shouldToggleOffline_whenProfileExistsAndCurrentlyOnline() {
-        // Arrange: profile đã tồn tại và đang online
-        Driver onlineDriver = Driver.builder()
-                .id(UUID.randomUUID())
-                .user(driverUser)
-                .vehiclePlate("51G-123.45")
-                .vehicleModel("Honda Air Blade 150")
-                .vehicleColor("Den")
-                .licenseNumber("012345678901")
-                .isOnline(true)
-                .rating(5.0f)
-                .totalTrips(0)
-                .faceScanPassed(false)
-                .build();
+    @DisplayName("getMyProfile: Lấy từ cache nếu có")
+    void getMyProfile_FromCache() {
+        DriverProfileResponse mockResp = mock(DriverProfileResponse.class);
+        when(cacheRepository.get("driver@example.com")).thenReturn(Optional.of(mockResp));
 
-        Driver offlineDriver = Driver.builder()
-                .id(onlineDriver.getId())
-                .user(driverUser)
-                .vehiclePlate("51G-123.45")
-                .vehicleModel("Honda Air Blade 150")
-                .vehicleColor("Den")
-                .licenseNumber("012345678901")
-                .isOnline(false)
-                .rating(5.0f)
-                .totalTrips(0)
-                .faceScanPassed(false)
-                .build();
+        DriverProfileResponse result = driverService.getMyProfile("driver@example.com");
 
-        when(userRepository.findByEmail("driver@example.com")).thenReturn(Optional.of(driverUser));
-        when(driverRepository.findByUserIdWithUser(driverUser.getId())).thenReturn(Optional.of(onlineDriver));
-        when(driverRepository.save(onlineDriver)).thenReturn(offlineDriver);
-
-        // Act
-        DriverProfileResponse response = driverService.switchDriver("driver@example.com", switchRequest);
-
-        // Assert: phải chuyển sang offline
-        assertThat(response.isOnline()).isFalse();
-        assertThat(response.isNewProfile()).isFalse();
+        assertThat(result).isEqualTo(mockResp);
+        verifyNoInteractions(userRepository, driverRepository);
     }
 
     @Test
-    @DisplayName("switchDriver thất bại khi user không tồn tại")
-    void switchDriver_shouldThrowUserNotFound_whenUserDoesNotExist() {
-        // Arrange
-        when(userRepository.findByEmail("notfound@example.com")).thenReturn(Optional.empty());
-
-        // Act and Assert
-        assertThatThrownBy(() -> driverService.switchDriver("notfound@example.com", switchRequest))
-                .isInstanceOf(AppException.class)
-                .satisfies(ex -> {
-                    AppException appEx = (AppException) ex;
-                    assertThat(appEx.getErrorCode()).isEqualTo(ErrorCode.USER_NOT_FOUND);
-                });
-    }
-
-    @Test
-    @DisplayName("switchDriver thất bại khi user không có role DRIVER")
-    void switchDriver_shouldThrowAccessDenied_whenUserIsNotDriver() {
-        // Arrange: user này có role CUSTOMER, không phải DRIVER
-        when(userRepository.findByEmail("customer@example.com")).thenReturn(Optional.of(customerUser));
-
-        // Act and Assert
-        assertThatThrownBy(() -> driverService.switchDriver("customer@example.com", switchRequest))
-                .isInstanceOf(AppException.class)
-                .satisfies(ex -> {
-                    AppException appEx = (AppException) ex;
-                    assertThat(appEx.getErrorCode()).isEqualTo(ErrorCode.ACCESS_DENIED);
-                });
-
-        verify(driverRepository, never()).save(any(Driver.class));
-    }
-
-    @Test
-    @DisplayName("switchDriver thất bại khi biển số xe đã được đăng ký")
-    void switchDriver_shouldThrowBadRequest_whenVehiclePlateDuplicated() {
-        // Arrange: profile chưa tồn tại nhưng biển số đã có người dùng
-        when(userRepository.findByEmail("driver@example.com")).thenReturn(Optional.of(driverUser));
-        when(driverRepository.findByUserIdWithUser(driverUser.getId())).thenReturn(Optional.empty());
-        when(driverRepository.existsByVehiclePlate("51G-123.45")).thenReturn(true);
-
-        // Act and Assert
-        assertThatThrownBy(() -> driverService.switchDriver("driver@example.com", switchRequest))
-                .isInstanceOf(AppException.class)
-                .satisfies(ex -> {
-                    AppException appEx = (AppException) ex;
-                    assertThat(appEx.getErrorCode()).isEqualTo(ErrorCode.BAD_REQUEST);
-                });
-
-        verify(driverRepository, never()).save(any(Driver.class));
-    }
-
-    @Test
-    @DisplayName("switchDriver thất bại khi số bằng lái đã được đăng ký")
-    void switchDriver_shouldThrowBadRequest_whenLicenseNumberDuplicated() {
-        // Arrange: biển số chưa dùng nhưng số bằng lái đã tồn tại
-        when(userRepository.findByEmail("driver@example.com")).thenReturn(Optional.of(driverUser));
-        when(driverRepository.findByUserIdWithUser(driverUser.getId())).thenReturn(Optional.empty());
-        when(driverRepository.existsByVehiclePlate("51G-123.45")).thenReturn(false);
-        when(driverRepository.existsByLicenseNumber("012345678901")).thenReturn(true);
-
-        // Act and Assert
-        assertThatThrownBy(() -> driverService.switchDriver("driver@example.com", switchRequest))
-                .isInstanceOf(AppException.class)
-                .satisfies(ex -> {
-                    AppException appEx = (AppException) ex;
-                    assertThat(appEx.getErrorCode()).isEqualTo(ErrorCode.BAD_REQUEST);
-                });
-    }
-
-    @Test
-    @DisplayName("switchDriver thất bại khi request null mà chưa có profile")
-    void switchDriver_shouldThrowBadRequest_whenRequestNullAndNoProfile() {
-        // Arrange: chưa có profile nhưng không gửi thông tin xe
-        when(userRepository.findByEmail("driver@example.com")).thenReturn(Optional.of(driverUser));
-        when(driverRepository.findByUserIdWithUser(driverUser.getId())).thenReturn(Optional.empty());
-
-        // Act and Assert
-        assertThatThrownBy(() -> driverService.switchDriver("driver@example.com", null))
-                .isInstanceOf(AppException.class)
-                .satisfies(ex -> {
-                    AppException appEx = (AppException) ex;
-                    assertThat(appEx.getErrorCode()).isEqualTo(ErrorCode.BAD_REQUEST);
-                });
-    }
-
-    // getMyProfile
-
-    @Test
-    @DisplayName("getMyProfile trả về thông tin đúng của tài xế")
-    void getMyProfile_shouldReturnCorrectProfile() {
-        // Arrange
-        when(userRepository.findByEmail("driver@example.com")).thenReturn(Optional.of(driverUser));
+    @DisplayName("getMyProfile: Lấy từ DB nếu cache rỗng")
+    void getMyProfile_FromDB() {
+        when(cacheRepository.get("driver@example.com")).thenReturn(Optional.empty());
+        when(userRepository.findByEmail(driverUser.getEmail())).thenReturn(Optional.of(driverUser));
         when(driverRepository.findByUserIdWithUser(driverUser.getId())).thenReturn(Optional.of(existingDriver));
 
-        // Act
-        DriverProfileResponse response = driverService.getMyProfile("driver@example.com");
+        DriverProfileResponse result = driverService.getMyProfile("driver@example.com");
 
-        // Assert
-        assertThat(response).isNotNull();
-        assertThat(response.email()).isEqualTo("driver@example.com");
-        assertThat(response.vehiclePlate()).isEqualTo("51G-123.45");
-        assertThat(response.isNewProfile()).isFalse();
-    }
-
-    @Test
-    @DisplayName("getMyProfile thất bại khi user không tồn tại")
-    void getMyProfile_shouldThrowUserNotFound_whenUserNotExist() {
-        // Arrange
-        when(userRepository.findByEmail("notfound@example.com")).thenReturn(Optional.empty());
-
-        // Act and Assert
-        assertThatThrownBy(() -> driverService.getMyProfile("notfound@example.com"))
-                .isInstanceOf(AppException.class)
-                .satisfies(ex -> {
-                    AppException appEx = (AppException) ex;
-                    assertThat(appEx.getErrorCode()).isEqualTo(ErrorCode.USER_NOT_FOUND);
-                });
-    }
-
-    @Test
-    @DisplayName("getMyProfile thất bại khi tài xế chưa có profile")
-    void getMyProfile_shouldThrowBadRequest_whenDriverProfileNotExist() {
-        // Arrange: user tồn tại nhưng chưa có profile driver
-        when(userRepository.findByEmail("driver@example.com")).thenReturn(Optional.of(driverUser));
-        when(driverRepository.findByUserIdWithUser(driverUser.getId())).thenReturn(Optional.empty());
-
-        // Act and Assert
-        assertThatThrownBy(() -> driverService.getMyProfile("driver@example.com"))
-                .isInstanceOf(AppException.class)
-                .satisfies(ex -> {
-                    AppException appEx = (AppException) ex;
-                    assertThat(appEx.getErrorCode()).isEqualTo(ErrorCode.BAD_REQUEST);
-                });
+        assertThat(result.vehiclePlate()).isEqualTo("51G-123.45");
+        verify(cacheRepository).put(eq("driver@example.com"), any(DriverProfileResponse.class));
     }
 }
