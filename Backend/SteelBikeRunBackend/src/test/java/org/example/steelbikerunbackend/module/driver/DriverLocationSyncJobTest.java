@@ -63,7 +63,7 @@ class DriverLocationSyncJobTest {
     }
 
     @Test
-    @DisplayName("syncLocationsToDB: Không có key Redis → không gọi DB")
+    @DisplayName("syncLocationsToDB: Không có key Redis -> không gọi DB")
     void sync_NoKeys_NothingToDo() {
         when(redisRepository.scanAllLocationKeys()).thenReturn(Set.of());
 
@@ -73,13 +73,13 @@ class DriverLocationSyncJobTest {
     }
 
     @Test
-    @DisplayName("syncLocationsToDB: 1 driver mới (chưa có trong DB) → INSERT")
+    @DisplayName("syncLocationsToDB: 1 driver mới (chưa có trong DB) -> INSERT")
     void sync_NewDriver_Inserts() {
         String key = "driver:location:" + driverId;
         when(redisRepository.scanAllLocationKeys()).thenReturn(Set.of(key));
         when(redisRepository.findByDriverId(driverId.toString())).thenReturn(Optional.of(cache));
         when(driverRepository.findById(driverId)).thenReturn(Optional.of(driver));
-        // Chưa có bản ghi → trả về empty → tạo mới
+        // Chưa có bản ghi -> trả về empty -> tạo mới
         when(locationRepository.findByDriverId(driverId)).thenReturn(Optional.empty());
         when(locationRepository.save(any(DriverLocation.class))).thenAnswer(i -> i.getArgument(0));
 
@@ -98,7 +98,7 @@ class DriverLocationSyncJobTest {
     }
 
     @Test
-    @DisplayName("syncLocationsToDB: Driver đã có bản ghi → UPDATE (UPSERT)")
+    @DisplayName("syncLocationsToDB: Driver đã có bản ghi -> UPDATE (UPSERT)")
     void sync_ExistingDriver_Updates() {
         String key = "driver:location:" + driverId;
         DriverLocation existingLocation = DriverLocation.builder()
@@ -124,7 +124,7 @@ class DriverLocationSyncJobTest {
     }
 
     @Test
-    @DisplayName("syncLocationsToDB: Key Redis expire giữa chừng → bỏ qua, không crash")
+    @DisplayName("syncLocationsToDB: Key Redis expire giữa chừng -> bỏ qua, không crash")
     void sync_KeyExpiredMidway_SkipsGracefully() {
         String key = "driver:location:" + driverId;
         when(redisRepository.scanAllLocationKeys()).thenReturn(Set.of(key));
@@ -138,7 +138,7 @@ class DriverLocationSyncJobTest {
     }
 
     @Test
-    @DisplayName("syncLocationsToDB: Driver không tồn tại trong DB → bỏ qua, không crash")
+    @DisplayName("syncLocationsToDB: Driver không tồn tại trong DB -> bỏ qua, không crash")
     void sync_DriverNotInDB_SkipsGracefully() {
         String key = "driver:location:" + driverId;
         when(redisRepository.scanAllLocationKeys()).thenReturn(Set.of(key));
@@ -151,7 +151,7 @@ class DriverLocationSyncJobTest {
     }
 
     @Test
-    @DisplayName("syncLocationsToDB: Một driver lỗi → không ảnh hưởng driver khác")
+    @DisplayName("syncLocationsToDB: Một driver lỗi -> không ảnh hưởng driver khác")
     void sync_OneDriverFails_OthersContinue() {
         UUID driverId2 = UUID.randomUUID();
         Driver driver2 = Driver.builder().id(driverId2).vehiclePlate("51G-999.99").build();

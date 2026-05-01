@@ -25,7 +25,7 @@ import java.util.Optional;
  * <h3>Design chính:</h3>
  * <ul>
  *   <li><b>Write path</b> (heartbeat 3s): chỉ ghi vào Redis, KHÔNG ghi PostgreSQL.
- *       Nếu ghi Postgres ở đây sẽ block WebSocket/REST thread → không chấp nhận được.</li>
+ *       Nếu ghi Postgres ở đây sẽ block WebSocket/REST thread -> không chấp nhận được.</li>
  *   <li><b>Read path</b>: đọc từ Redis (sub-1ms), không bao giờ đọc Postgres cho location realtime.</li>
  *   <li><b>Sync</b>: chạy mỗi 30s bởi {@link DriverLocationSyncJob}.</li>
  * </ul>
@@ -45,9 +45,9 @@ public class DriverLocationService {
     // H3Core được khởi tạo lazy để tránh IOException ở constructor
     private H3Core h3Core;
 
-    // ─────────────────────────────────────────────────────────────────────────
+    // -------------------------------------------------------------------------
     // WRITE PATH: Driver gửi heartbeat
-    // ─────────────────────────────────────────────────────────────────────────
+    // -------------------------------------------------------------------------
 
     /**
      * Nhận vị trí mới từ Driver app và ghi vào Redis.
@@ -101,7 +101,7 @@ public class DriverLocationService {
 
         redisRepository.save(cache, oldH3Index);
 
-        log.debug("Driver [{}] location updated → lat={}, lng={}, h3={}",
+        log.debug("Driver [{}] location updated -> lat={}, lng={}, h3={}",
                 user.getEmail(), request.latitude(), request.longitude(), h3Index);
 
         return new LocationUpdateResponse(
@@ -113,9 +113,9 @@ public class DriverLocationService {
         );
     }
 
-    // ─────────────────────────────────────────────────────────────────────────
+    // -------------------------------------------------------------------------
     // CLEAN UP: Xóa location khi driver offline
-    // ─────────────────────────────────────────────────────────────────────────
+    // -------------------------------------------------------------------------
 
     /**
      * Xóa location khỏi Redis khi tài xế offline.
@@ -131,9 +131,9 @@ public class DriverLocationService {
         log.info("Driver [{}] location removed from Redis (went offline)", driverId);
     }
 
-    // ─────────────────────────────────────────────────────────────────────────
+    // -------------------------------------------------------------------------
     // HELPER: H3
-    // ─────────────────────────────────────────────────────────────────────────
+    // -------------------------------------------------------------------------
 
     /**
      * Chuyển lat/lng thành H3 cell index với resolution=9.

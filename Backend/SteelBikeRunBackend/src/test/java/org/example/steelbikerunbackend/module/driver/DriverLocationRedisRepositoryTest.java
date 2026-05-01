@@ -46,7 +46,7 @@ class DriverLocationRedisRepositoryTest {
         repository = new DriverLocationRedisRepository(redisTemplate);
     }
 
-    // ─── save ────────────────────────────────────────────────────────────────
+    // --- save ----------------------------------------------------------------
 
     @Test
     @DisplayName("save: Ghi HASH và thêm vào H3 SET, đặt TTL")
@@ -66,7 +66,7 @@ class DriverLocationRedisRepositoryTest {
     }
 
     @Test
-    @DisplayName("save: H3 không đổi → KHÔNG xóa ô cũ")
+    @DisplayName("save: H3 không đổi -> KHÔNG xóa ô cũ")
     void save_SameH3_NoRemove() {
         DriverLocationCache cache = buildCache(DRIVER_ID, H3_INDEX);
 
@@ -76,7 +76,7 @@ class DriverLocationRedisRepositoryTest {
     }
 
     @Test
-    @DisplayName("save: H3 đổi ô → xóa driverId khỏi ô cũ")
+    @DisplayName("save: H3 đổi ô -> xóa driverId khỏi ô cũ")
     void save_DifferentH3_RemovesFromOldCell() {
         String oldH3    = "891f1d4b000ffff";
         String oldH3Key = "h3:drivers:" + oldH3;
@@ -87,10 +87,10 @@ class DriverLocationRedisRepositoryTest {
         verify(setOps).remove(oldH3Key, DRIVER_ID);
     }
 
-    // ─── findByDriverId ───────────────────────────────────────────────────────
+    // --- findByDriverId -------------------------------------------------------
 
     @Test
-    @DisplayName("findByDriverId: Key tồn tại → parse đúng DriverLocationCache")
+    @DisplayName("findByDriverId: Key tồn tại -> parse đúng DriverLocationCache")
     void findByDriverId_Found() {
         Instant now = Instant.now();
         List<Object> values = List.of(
@@ -119,7 +119,7 @@ class DriverLocationRedisRepositoryTest {
     }
 
     @Test
-    @DisplayName("findByDriverId: Key không tồn tại (TTL hết) → trả về empty")
+    @DisplayName("findByDriverId: Key không tồn tại (TTL hết) -> trả về empty")
     void findByDriverId_NotFound() {
         List<Object> nullValues = new java.util.ArrayList<>();
         nullValues.add(null); // field đầu tiên null = key không tồn tại
@@ -137,7 +137,7 @@ class DriverLocationRedisRepositoryTest {
         assertThat(result).isEmpty();
     }
 
-    // ─── delete ───────────────────────────────────────────────────────────────
+    // --- delete ---------------------------------------------------------------
 
     @Test
     @DisplayName("delete: Xóa location key và driverId khỏi H3 SET")
@@ -149,7 +149,7 @@ class DriverLocationRedisRepositoryTest {
     }
 
     @Test
-    @DisplayName("delete: h3Index null → chỉ xóa location key, không gọi SREM")
+    @DisplayName("delete: h3Index null -> chỉ xóa location key, không gọi SREM")
     void delete_NullH3_SkipsSetRemove() {
         repository.delete(DRIVER_ID, null);
 
@@ -157,7 +157,7 @@ class DriverLocationRedisRepositoryTest {
         verify(setOps, never()).remove(anyString(), any());
     }
 
-    // ─── scanAllLocationKeys ──────────────────────────────────────────────────
+    // --- scanAllLocationKeys --------------------------------------------------
 
     @Test
     @DisplayName("scanAllLocationKeys: Trả về set keys từ Redis")
@@ -171,7 +171,7 @@ class DriverLocationRedisRepositoryTest {
     }
 
     @Test
-    @DisplayName("scanAllLocationKeys: Redis trả về null → empty set (không NPE)")
+    @DisplayName("scanAllLocationKeys: Redis trả về null -> empty set (không NPE)")
     void scanAllLocationKeys_NullFromRedis_ReturnsEmptySet() {
         when(redisTemplate.keys("driver:location:*")).thenReturn(null);
 
@@ -180,7 +180,7 @@ class DriverLocationRedisRepositoryTest {
         assertThat(result).isEmpty();
     }
 
-    // ─── HELPER ───────────────────────────────────────────────────────────────
+    // --- HELPER ---------------------------------------------------------------
 
     private DriverLocationCache buildCache(String driverId, String h3Index) {
         return DriverLocationCache.builder()

@@ -17,13 +17,13 @@ import java.util.Set;
 import java.util.UUID;
 
 /**
- * Write-Behind Sync Job: flush dữ liệu vị trí từ Redis → PostgreSQL mỗi 30 giây.
+ * Write-Behind Sync Job: flush dữ liệu vị trí từ Redis -> PostgreSQL mỗi 30 giây.
  *
  * <h3>Tại sao cần job này?</h3>
  * <ul>
  *   <li>Redis là primary store cho vị trí realtime (cực nhanh, TTL 60s).</li>
  *   <li>PostgreSQL cần giữ lịch sử để phục vụ analytics và surge pricing.</li>
- *   <li>Ghi Postgres ở mỗi heartbeat (3s/lần) sẽ tạo quá nhiều I/O → dùng batch 30s.</li>
+ *   <li>Ghi Postgres ở mỗi heartbeat (3s/lần) sẽ tạo quá nhiều I/O -> dùng batch 30s.</li>
  * </ul>
  *
  * <h3>Idempotency:</h3>
@@ -63,7 +63,7 @@ public class DriverLocationSyncJob {
             try {
                 Optional<DriverLocationCache> cacheOpt = redisRepository.findByDriverId(driverId);
                 if (cacheOpt.isEmpty()) {
-                    // Key đã expire trong khoảng thời gian scan → bỏ qua
+                    // Key đã expire trong khoảng thời gian scan -> bỏ qua
                     skipCount++;
                     continue;
                 }
@@ -73,7 +73,7 @@ public class DriverLocationSyncJob {
                 // Tìm Driver entity trong Postgres
                 Optional<Driver> driverOpt = driverRepository.findById(UUID.fromString(driverId));
                 if (driverOpt.isEmpty()) {
-                    log.warn("[SyncJob] DriverId [{}] có location trong Redis nhưng không tìm thấy trong DB → bỏ qua",
+                    log.warn("[SyncJob] DriverId [{}] có location trong Redis nhưng không tìm thấy trong DB -> bỏ qua",
                             driverId);
                     skipCount++;
                     continue;

@@ -69,7 +69,7 @@ class DriverLocationServiceTest {
                 .build();
     }
 
-    // ─── updateLocation ──────────────────────────────────────────────────────
+    // --- updateLocation ------------------------------------------------------
 
     @Test
     @DisplayName("updateLocation: Thành công — ghi Redis, trả về H3 index hợp lệ")
@@ -103,7 +103,7 @@ class DriverLocationServiceTest {
     }
 
     @Test
-    @DisplayName("updateLocation: Driver đổi ô H3 → truyền oldH3Index vào Redis")
+    @DisplayName("updateLocation: Driver đổi ô H3 -> truyền oldH3Index vào Redis")
     void updateLocation_H3CellChanged() {
         String oldH3 = "891f1d4b2a3ffff";
         DriverLocationCache oldCache = DriverLocationCache.builder()
@@ -159,7 +159,7 @@ class DriverLocationServiceTest {
                 .hasMessageContaining("Profile Driver");
     }
 
-    // ─── removeDriverLocation ─────────────────────────────────────────────────
+    // --- removeDriverLocation -------------------------------------------------
 
     @Test
     @DisplayName("removeDriverLocation: Xóa Redis khi driver offline — có H3 cũ")
@@ -185,7 +185,7 @@ class DriverLocationServiceTest {
         verify(redisRepository).delete(driverId, null);
     }
 
-    // ─── latLngToH3 ──────────────────────────────────────────────────────────
+    // --- latLngToH3 ----------------------------------------------------------
 
     @Test
     @DisplayName("latLngToH3: Tọa độ Bến Thành trả về H3 index không rỗng")
@@ -198,7 +198,7 @@ class DriverLocationServiceTest {
     }
 
     @Test
-    @DisplayName("latLngToH3: 2 cuộc gọi liên tiếp cho cùng tọa độ → kết quả giống nhau (idempotent)")
+    @DisplayName("latLngToH3: 2 cuộc gọi liên tiếp cho cùng tọa độ -> kết quả giống nhau (idempotent)")
     void latLngToH3_Idempotent() {
         String h3First  = service.latLngToH3(LAT, LNG);
         String h3Second = service.latLngToH3(LAT, LNG);
@@ -207,7 +207,7 @@ class DriverLocationServiceTest {
     }
 
     @Test
-    @DisplayName("latLngToH3: Tọa độ khác nhau (cách xa) → H3 index khác nhau")
+    @DisplayName("latLngToH3: Tọa độ khác nhau (cách xa) -> H3 index khác nhau")
     void latLngToH3_DifferentCoords_DifferentCells() {
         // Hà Nội vs TP.HCM — chắc chắn khác cell
         String hn = service.latLngToH3(21.0278, 105.8342);

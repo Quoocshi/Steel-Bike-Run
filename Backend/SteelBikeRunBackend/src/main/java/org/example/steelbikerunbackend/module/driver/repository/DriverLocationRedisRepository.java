@@ -17,14 +17,14 @@ import java.util.Set;
  *
  * <h3>Key schema:</h3>
  * <ul>
- *   <li>{@code driver:location:{driverId}} → HASH chứa toàn bộ thông tin vị trí</li>
- *   <li>{@code h3:drivers:{h3Index}} → SET chứa danh sách driverId trong ô H3</li>
+ *   <li>{@code driver:location:{driverId}} -> HASH chứa toàn bộ thông tin vị trí</li>
+ *   <li>{@code h3:drivers:{h3Index}} -> SET chứa danh sách driverId trong ô H3</li>
  * </ul>
  *
  * <p>Tại sao dùng 2 key riêng?
  * <ul>
- *   <li>HASH: đọc toàn bộ thông tin 1 driver → O(1)</li>
- *   <li>SET per H3 cell: k-ring search chỉ cần SUNION của 19 cells → O(N drivers)</li>
+ *   <li>HASH: đọc toàn bộ thông tin 1 driver -> O(1)</li>
+ *   <li>SET per H3 cell: k-ring search chỉ cần SUNION của 19 cells -> O(N drivers)</li>
  * </ul>
  */
 @Slf4j
@@ -41,14 +41,14 @@ public class DriverLocationRedisRepository {
 
     private final RedisTemplate<String, Object> redisTemplate;
 
-    // ─────────────────────────────────────────────────────────────────────────
+    // -------------------------------------------------------------------------
     // WRITE
-    // ─────────────────────────────────────────────────────────────────────────
+    // -------------------------------------------------------------------------
 
     /**
      * Lưu / cập nhật vị trí tài xế vào Redis.
      *
-     * <p>Nếu ô H3 thay đổi → xóa khỏi ô cũ, thêm vào ô mới.
+     * <p>Nếu ô H3 thay đổi -> xóa khỏi ô cũ, thêm vào ô mới.
      * Không bao giờ ghi vào PostgreSQL ở đây (không blocking heartbeat).
      *
      * @param cache dữ liệu vị trí mới nhất
@@ -73,18 +73,18 @@ public class DriverLocationRedisRepository {
         redisTemplate.opsForSet().add(newH3Key, cache.getDriverId());
         redisTemplate.expire(newH3Key, LOCATION_TTL);
 
-        // Nếu ô H3 thay đổi → xóa khỏi ô cũ
+        // Nếu ô H3 thay đổi -> xóa khỏi ô cũ
         if (oldH3Index != null && !oldH3Index.equals(cache.getH3Index())) {
             String oldH3Key = H3_DRIVERS_KEY_PREFIX + oldH3Index;
             redisTemplate.opsForSet().remove(oldH3Key, cache.getDriverId());
-            log.debug("Driver [{}] moved from H3 cell [{}] → [{}]",
+            log.debug("Driver [{}] moved from H3 cell [{}] -> [{}]",
                     cache.getDriverId(), oldH3Index, cache.getH3Index());
         }
     }
 
-    // ─────────────────────────────────────────────────────────────────────────
+    // -------------------------------------------------------------------------
     // READ
-    // ─────────────────────────────────────────────────────────────────────────
+    // -------------------------------------------------------------------------
 
     /**
      * Đọc thông tin vị trí của 1 driver từ Redis.
@@ -106,7 +106,7 @@ public class DriverLocationRedisRepository {
     /**
      * Lấy danh sách tất cả driverId đang online trong một tập H3 cells (k-ring).
      *
-     * <p>Dùng SUNION để hợp tất cả SET của các cells cùng lúc → O(N drivers).
+     * <p>Dùng SUNION để hợp tất cả SET của các cells cùng lúc -> O(N drivers).
      *
      * @param h3Cells danh sách H3 cell index từ k-ring search
      * @return set driverId đang online trong vùng đó
@@ -121,7 +121,7 @@ public class DriverLocationRedisRepository {
                 .map(cell -> H3_DRIVERS_KEY_PREFIX + cell)
                 .toArray(String[]::new);
 
-        // SUNION → hợp tất cả SET, trả về tất cả driverId trong vùng
+        // SUNION -> hợp tất cả SET, trả về tất cả driverId trong vùng
         Set<Object> result = redisTemplate.opsForSet().union(keys[0],
                 keys.length > 1 ? List.of(java.util.Arrays.copyOfRange(keys, 1, keys.length)) : List.of());
 
@@ -142,9 +142,9 @@ public class DriverLocationRedisRepository {
         return result;
     }
 
-    // ─────────────────────────────────────────────────────────────────────────
+    // -------------------------------------------------------------------------
     // DELETE (khi driver offline)
-    // ─────────────────────────────────────────────────────────────────────────
+    // -------------------------------------------------------------------------
 
     /**
      * Xóa location khi driver offline.
@@ -176,9 +176,9 @@ public class DriverLocationRedisRepository {
         return keys != null ? keys : Set.of();
     }
 
-    // ─────────────────────────────────────────────────────────────────────────
+    // -------------------------------------------------------------------------
     // PRIVATE HELPERS
-    // ─────────────────────────────────────────────────────────────────────────
+    // -------------------------------------------------------------------------
 
     private DriverLocationCache parseFromHash(List<Object> values) {
         DriverLocationCache cache = new DriverLocationCache();

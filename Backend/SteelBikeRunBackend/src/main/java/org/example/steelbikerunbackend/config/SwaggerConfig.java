@@ -39,7 +39,7 @@ public class SwaggerConfig {
     public GroupedOpenApi authGroup() {
         return GroupedOpenApi.builder()
                 .group("1-auth")
-                .displayName("🔐 Authentication")
+                .displayName(" Authentication")
                 .pathsToMatch("/api/v1/auth/**")
                 .build();
     }
@@ -48,7 +48,7 @@ public class SwaggerConfig {
     public GroupedOpenApi driverGroup() {
         return GroupedOpenApi.builder()
                 .group("2-driver")
-                .displayName("🚗 Driver")
+                .displayName(" Driver")
                 .pathsToMatch("/api/v1/driver/**")
                 .build();
     }
@@ -57,7 +57,7 @@ public class SwaggerConfig {
     public GroupedOpenApi tripGroup() {
         return GroupedOpenApi.builder()
                 .group("3-trip")
-                .displayName("🗺️ Trip")
+                .displayName(" Trip")
                 .pathsToMatch("/api/v1/trip/**")
                 .build();
     }
@@ -66,7 +66,7 @@ public class SwaggerConfig {
     public GroupedOpenApi userGroup() {
         return GroupedOpenApi.builder()
                 .group("4-user")
-                .displayName("👤 User")
+                .displayName(" User")
                 .pathsToMatch("/api/v1/user/**")
                 .build();
     }

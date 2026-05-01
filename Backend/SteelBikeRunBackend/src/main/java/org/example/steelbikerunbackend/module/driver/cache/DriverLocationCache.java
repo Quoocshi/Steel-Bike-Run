@@ -8,12 +8,12 @@ import java.time.Instant;
 /**
  * POJO đại diện cho dữ liệu vị trí tài xế lưu trong Redis.
  *
- * <p>Key schema: {@code driver:location:{driverId}} → HASH
+ * <p>Key schema: {@code driver:location:{driverId}} -> HASH
  * <br>TTL: 60 giây — nếu driver mất kết nối > 60s, key tự động bị xóa.
  *
  * <p>Tại sao dùng HASH thay vì String (JSON)?
- * → HGET field riêng lẻ mà không cần deserialize toàn bộ object.
- * → Tiết kiệm memory hơn JSON.
+ * -> HGET field riêng lẻ mà không cần deserialize toàn bộ object.
+ * -> Tiết kiệm memory hơn JSON.
  */
 @Getter
 @Setter

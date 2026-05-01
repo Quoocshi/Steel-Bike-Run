@@ -9,7 +9,8 @@ import java.util.UUID;
 /**
  * Vị trí tài xế lưu trong PostgreSQL — đây là lớp PERSISTENCE,
  * KHÔNG phải primary store (primary store là Redis).
- * Bảng này được sync từ Redis mỗi 30 giây bởi {@link org.example.steelbikerunbackend.module.driver.service.DriverLocationSyncJob}.
+ * Bảng này được sync từ Redis mỗi 30 giây bởi
+ * {@link org.example.steelbikerunbackend.module.driver.service.DriverLocationSyncJob}.
  */
 @Entity
 @Table(name = "driver_locations")
@@ -29,7 +30,8 @@ public class DriverLocation {
     @JoinColumn(name = "driver_id", nullable = false, unique = true)
     private Driver driver;
 
-    // H3 cell index (resolution=9, ~174m hexagon) — dùng cho analytics và surge pricing
+    // H3 cell index (resolution=9, ~174m hexagon) — dùng cho analytics và surge
+    // pricing
     @Column(name = "h3_index", nullable = false, length = 20)
     private String h3Index;
 

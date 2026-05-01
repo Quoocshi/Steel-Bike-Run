@@ -30,15 +30,15 @@ public class DriverController {
         private final DriverService driverService;
         private final DriverLocationService driverLocationService;
 
-        // ─────────────────────────────────────────────────────────────────────────
-        // 1. SWITCH USER → DRIVER MODE
-        // ─────────────────────────────────────────────────────────────────────────
+        // -------------------------------------------------------------------------
+        // 1. SWITCH USER -> DRIVER MODE
+        // -------------------------------------------------------------------------
 
         /**
          * Chuyển user sang chế độ Driver. Chỉ CUSTOMER mới gọi được.
          *
          * <ul>
-         * <li><b>Lần đầu tiên</b>: bắt buộc gửi thông tin xe → tạo profile → tự động
+         * <li><b>Lần đầu tiên</b>: bắt buộc gửi thông tin xe -> tạo profile -> tự động
          * Online.</li>
          * <li><b>Các lần sau</b>: profile đã tồn tại, chỉ đảm bảo trạng thái
          * Online.</li>
@@ -80,9 +80,9 @@ public class DriverController {
                 return ResponseEntity.ok(ApiResponse.success(message, response));
         }
 
-        // ─────────────────────────────────────────────────────────────────────────
-        // 2. SWITCH DRIVER → CUSTOMER MODE
-        // ─────────────────────────────────────────────────────────────────────────
+        // -------------------------------------------------------------------------
+        // 2. SWITCH DRIVER -> CUSTOMER MODE
+        // -------------------------------------------------------------------------
 
         /**
          * Chuyển tài xế về chế độ Customer. Chỉ DRIVER mới gọi được.
@@ -113,9 +113,9 @@ public class DriverController {
                                 .ok(ApiResponse.success("Đã chuyển về chế độ Customer. Trạng thái: Offline", response));
         }
 
-        // ─────────────────────────────────────────────────────────────────────────
+        // -------------------------------------------------------------------------
         // 3. SET ONLINE / OFFLINE (trong Driver Mode)
-        // ─────────────────────────────────────────────────────────────────────────
+        // -------------------------------------------------------------------------
 
         /**
          * Bật / tắt trạng thái online trong khi đang ở Driver Mode.
@@ -148,9 +148,9 @@ public class DriverController {
                 return ResponseEntity.ok(ApiResponse.success(message, response));
         }
 
-        // ─────────────────────────────────────────────────────────────────────────
+        // -------------------------------------------------------------------------
         // 4. GET PROFILE
-        // ─────────────────────────────────────────────────────────────────────────
+        // -------------------------------------------------------------------------
 
         /**
          * Lấy profile Driver của tài xế đang đăng nhập.
@@ -169,9 +169,9 @@ public class DriverController {
                 return ResponseEntity.ok(ApiResponse.success(response));
         }
 
-        // ─────────────────────────────────────────────────────────────────────────
+        // -------------------------------------------------------------------------
         // 5. LOCATION UPDATE (Driver Heartbeat)
-        // ─────────────────────────────────────────────────────────────────────────
+        // -------------------------------------------------------------------------
 
         /**
          * Driver gửi vị trí GPS lên server (heartbeat mỗi 3 giây).
