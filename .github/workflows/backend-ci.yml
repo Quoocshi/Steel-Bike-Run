@@ -16,15 +16,13 @@ on:
     paths:
       - 'Backend/**'
 
-# Chỉ cho phép 1 run cùng lúc trên cùng nhánh (hủy run cũ nếu có run mới)
+# Chỉ cho phép 1 run cùng lúc trên nhánh develop (hủy run cũ nếu có run mới)
 concurrency:
   group: backend-ci-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
-  # ─────────────────────────────────────────────
-  # JOB 1: Build & Test (chạy trên MỌI nhánh)
-  # ─────────────────────────────────────────────
+  # JOB 1: Build & Test
   build-and-test:
     name: Build & Test
     runs-on: ubuntu-latest
@@ -34,10 +32,10 @@ jobs:
         working-directory: Backend/SteelBikeRunBackend
 
     steps:
-      - name: ⬇ Checkout source
+      - name: ⬇Checkout source
         uses: actions/checkout@v4
 
-      - name: ☕ Set up JDK 21
+      - name: Set up JDK 21
         uses: actions/setup-java@v4
         with:
           java-version: '21'
@@ -45,7 +43,7 @@ jobs:
           cache: maven
 
       # Inject các secrets vào application.properties trước khi build
-      - name: 🔐 Inject application.properties từ secrets
+      - name: Inject application.properties từ secrets
         run: |
           mkdir -p src/main/resources
           cat > src/main/resources/application.properties << 'EOF'
@@ -98,23 +96,21 @@ jobs:
           app.cache.profile-ttl-minutes=10
           EOF
 
-      - name: 🔨 Build với Maven (skip tests)
+      - name: Build with Maven (skip tests)
         run: mvn -B package -DskipTests --no-transfer-progress
 
-      - name: 🧪 Chạy Unit Tests
+      - name: Run Unit Tests
         run: mvn -B test --no-transfer-progress
 
       # Lưu artifact JAR để dùng ở các job tiếp theo
-      - name: 📦 Upload JAR artifact
+      - name: Upload JAR artifact
         uses: actions/upload-artifact@v4
         with:
           name: backend-jar
           path: Backend/SteelBikeRunBackend/target/*.jar
           retention-days: 7
 
-  # ─────────────────────────────────────────────
-  # JOB 2: Code Quality (chạy trên MỌI nhánh)
-  # ─────────────────────────────────────────────
+  # JOB 2: Code Quality (chạy song song với build-and-test)
   code-quality:
     name: Code Quality Check
     runs-on: ubuntu-latest
@@ -125,17 +121,17 @@ jobs:
         working-directory: Backend/SteelBikeRunBackend
 
     steps:
-      - name: ⬇ Checkout source
+      - name: ⬇Checkout source
         uses: actions/checkout@v4
 
-      - name: ☕ Set up JDK 21
+      - name: Set up JDK 21
         uses: actions/setup-java@v4
         with:
           java-version: '21'
           distribution: 'temurin'
           cache: maven
 
-      - name: 🔐 Inject application.properties từ secrets
+      - name: Inject application.properties từ secrets
         run: |
           mkdir -p src/main/resources
           cat > src/main/resources/application.properties << 'EOF'
@@ -168,14 +164,13 @@ jobs:
           app.cache.profile-ttl-minutes=10
           EOF
 
-      - name: ✅ Verify Maven build
+      # Kiểm tra compile warnings & potential issues
+      - name: Verify Maven build (compile + verify lifecycle)
         run: mvn -B verify -DskipTests --no-transfer-progress
 
-  # ─────────────────────────────────────────────
   # JOB 3: Docker Build & Push (CHỈ chạy khi push vào main)
-  # ─────────────────────────────────────────────
   docker-build-push:
-    name: 🐳 Docker Build & Push to Hub
+    name: Docker Build & Push to Hub
     runs-on: ubuntu-latest
     needs: [build-and-test, code-quality]
     # Chỉ chạy khi push thẳng vào main (không chạy với PR)
@@ -186,7 +181,7 @@ jobs:
         uses: actions/checkout@v4
 
       # Tạo lại application.properties chứa biến môi trường bên trong Docker image
-      - name: 🔐 Inject application.properties cho Docker build
+      - name: Inject application.properties cho Docker build
         run: |
           mkdir -p Backend/SteelBikeRunBackend/src/main/resources
           cat > Backend/SteelBikeRunBackend/src/main/resources/application.properties << 'EOF'
@@ -225,13 +220,13 @@ jobs:
           app.cache.profile-ttl-minutes=10
           EOF
 
-      - name: 🔑 Đăng nhập Docker Hub
+      - name: Đăng nhập Docker Hub
         uses: docker/login-action@v3
         with:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
 
-      - name: 🏷️ Tạo metadata (tag) cho Docker image
+      - name: Tạo metadata (tag) cho Docker image
         id: meta
         uses: docker/metadata-action@v5
         with:
@@ -240,7 +235,7 @@ jobs:
             type=raw,value=latest
             type=sha,prefix=sha-,format=short
 
-      - name: 🐳 Build & Push Docker image lên Docker Hub
+      - name: Build & Push Docker image lên Docker Hub
         uses: docker/build-push-action@v5
         with:
           context: Backend/SteelBikeRunBackend
@@ -248,17 +243,15 @@ jobs:
           push: true
           tags: ${{ steps.meta.outputs.tags }}
 
-  # ─────────────────────────────────────────────
   # JOB 4: Deploy lên AWS EC2 (CHỈ chạy khi push vào main)
-  # ─────────────────────────────────────────────
   deploy-to-ec2:
-    name: 🚀 Deploy lên AWS EC2
+    name: Deploy lên AWS EC2
     runs-on: ubuntu-latest
     needs: docker-build-push
     if: github.ref == 'refs/heads/main' && github.event_name == 'push'
 
     steps:
-      - name: 🚀 SSH vào EC2 và deploy bản mới
+      - name: SSH vào EC2 và deploy bản mới
         uses: appleboy/ssh-action@v1.0.3
         with:
           host: ${{ secrets.EC2_HOST }}
@@ -285,11 +278,9 @@ jobs:
             # Dọn dẹp image cũ không dùng nữa để tiết kiệm ổ đĩa
             docker image prune -f
 
-            echo "✅ Deploy thành công! Container đang chạy."
+            echo "Deploy thành công! Container đang chạy."
 
-  # ─────────────────────────────────────────────
   # JOB 5: Thông báo kết quả cuối
-  # ─────────────────────────────────────────────
   notify:
     name: Notify Result
     runs-on: ubuntu-latest
@@ -297,7 +288,7 @@ jobs:
     if: always()
 
     steps:
-      - name: ✅ Pipeline thành công
+      - name: Pipeline thành công
         if: ${{ needs.build-and-test.result == 'success' && needs.code-quality.result == 'success' }}
         run: |
           echo "============================================"
@@ -307,7 +298,7 @@ jobs:
           echo "  Actor  : ${{ github.actor }}"
           echo "============================================"
 
-      - name: ❌ Pipeline thất bại
+      - name: Pipeline thất bại
         if: ${{ needs.build-and-test.result == 'failure' || needs.code-quality.result == 'failure' }}
         run: |
           echo "============================================"
