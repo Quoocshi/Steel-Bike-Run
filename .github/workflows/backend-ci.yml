@@ -32,7 +32,7 @@ jobs:
         working-directory: Backend/SteelBikeRunBackend
 
     steps:
-      - name: ⬇Checkout source
+      - name: Checkout source
         uses: actions/checkout@v4
 
       - name: Set up JDK 21
@@ -121,7 +121,7 @@ jobs:
         working-directory: Backend/SteelBikeRunBackend
 
     steps:
-      - name: ⬇Checkout source
+      - name: Checkout source
         uses: actions/checkout@v4
 
       - name: Set up JDK 21
@@ -177,7 +177,7 @@ jobs:
     if: github.ref == 'refs/heads/main' && github.event_name == 'push'
 
     steps:
-      - name: ⬇ Checkout source
+      - name: Checkout source
         uses: actions/checkout@v4
 
       # Tạo lại application.properties chứa biến môi trường bên trong Docker image
