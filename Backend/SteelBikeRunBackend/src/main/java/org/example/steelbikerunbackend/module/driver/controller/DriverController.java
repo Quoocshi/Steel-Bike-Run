@@ -9,15 +9,18 @@ import lombok.RequiredArgsConstructor;
 import org.example.steelbikerunbackend.common.response.ApiResponse;
 import org.example.steelbikerunbackend.module.driver.dto.DriverProfileResponse;
 import org.example.steelbikerunbackend.module.driver.dto.DriverStatusRequest;
+import org.example.steelbikerunbackend.module.driver.dto.LocationUpdateRequest;
+import org.example.steelbikerunbackend.module.driver.dto.LocationUpdateResponse;
 import org.example.steelbikerunbackend.module.driver.dto.SwitchDriverRequest;
 import org.example.steelbikerunbackend.module.driver.dto.SwitchRoleResponse;
+import org.example.steelbikerunbackend.module.driver.service.DriverLocationService;
 import org.example.steelbikerunbackend.module.driver.service.DriverService;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.*;
 
-@Tag(name = "Driver", description = "Quản lý tài xế: chuyển đổi chế độ, bật/tắt trạng thái online, xem profile")
+@Tag(name = "Driver", description = "Quản lý tài xế: chuyển đổi chế độ, bật/tắt trạng thái online, cập nhật vị trí")
 @SecurityRequirement(name = "bearerAuth")
 @RestController
 @RequestMapping("/api/v1/driver")
@@ -25,6 +28,7 @@ import org.springframework.web.bind.annotation.*;
 public class DriverController {
 
         private final DriverService driverService;
+        private final DriverLocationService driverLocationService;
 
         // ─────────────────────────────────────────────────────────────────────────
         // 1. SWITCH USER → DRIVER MODE
@@ -163,5 +167,37 @@ public class DriverController {
 
                 DriverProfileResponse response = driverService.getMyProfile(userEmail);
                 return ResponseEntity.ok(ApiResponse.success(response));
+        }
+
+        // ─────────────────────────────────────────────────────────────────────────
+        // 5. LOCATION UPDATE (Driver Heartbeat)
+        // ─────────────────────────────────────────────────────────────────────────
+
+        /**
+         * Driver gửi vị trí GPS lên server (heartbeat mỗi 3 giây).
+         * Chỉ DRIVER đang ONLINE mới gọi được.
+         * Vị trí được ghi vào Redis (primary store), KHÔNG ghi Postgres ngay.
+         */
+        @Operation(summary = "Cập nhật vị trí tài xế (heartbeat)", description = """
+                        Chỉ tài khoản **DRIVER** đang online được gọi endpoint này.
+
+                        - App tài xế gọi mỗi 3 giây để cập nhật vị trí GPS.
+                        - Vị trí được ghi vào **Redis** (TTL 60s), không ghi Postgres trực tiếp.
+                        - Postgres sẽ được sync sau mỗi 30 giây bởi Sync Job.
+                        - Response trả về `h3Index` — mobile dùng để vẽ H3 hexagon overlay.
+                        """)
+        @ApiResponses({
+                        @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "200", description = "Cập nhật vị trí thành công"),
+                        @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "400", description = "Tài xế offline hoặc chưa có profile"),
+                        @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "403", description = "Tài khoản không phải DRIVER")
+        })
+        @PreAuthorize("hasRole('DRIVER')")
+        @PostMapping("/location")
+        public ResponseEntity<ApiResponse<LocationUpdateResponse>> updateLocation(
+                        @AuthenticationPrincipal String userEmail,
+                        @Valid @RequestBody LocationUpdateRequest request) {
+
+                LocationUpdateResponse response = driverLocationService.updateLocation(userEmail, request);
+                return ResponseEntity.ok(ApiResponse.success("Vị trí đã được cập nhật", response));
         }
 }
