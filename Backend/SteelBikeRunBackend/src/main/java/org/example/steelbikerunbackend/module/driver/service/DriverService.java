@@ -37,7 +37,7 @@ public class DriverService {
          *
          * <ul>
          * <li><b>Lần đầu tiên</b>: bắt buộc cung cấp thông tin xe để tạo profile
-         * → tự động set {@code isOnline = true}.</li>
+         * -> tự động set {@code isOnline = true}.</li>
          * <li><b>Các lần sau</b>: profile đã tồn tại, chỉ đảm bảo
          * {@code isOnline = true} (luôn online khi switch sang Driver).</li>
          * </ul>
@@ -59,7 +59,7 @@ public class DriverService {
 
                 Optional<Driver> existing = driverRepository.findByUserIdWithUser(user.getId());
 
-                // Profile đã tồn tại → đảm bảo isOnline = true và role = DRIVER
+                // Profile đã tồn tại -> đảm bảo isOnline = true và role = DRIVER
                 if (existing.isPresent()) {
                         Driver driver = existing.get();
 
@@ -76,11 +76,11 @@ public class DriverService {
                         userProfileCacheRepository.evict(userEmail);
 
                         String token = jwtUtil.generateToken(user.getEmail(), UserRole.DRIVER.name());
-                        log.info("Driver [{}] switched to Driver mode → role=DRIVER, Online", user.getEmail());
+                        log.info("Driver [{}] switched to Driver mode -> role=DRIVER, Online", user.getEmail());
                         return SwitchRoleResponse.of(token, DriverProfileResponse.from(driver, false));
                 }
 
-                // Profile chưa tồn tại → validate vehicle info rồi tạo mới
+                // Profile chưa tồn tại -> validate vehicle info rồi tạo mới
                 if (request == null) {
                         throw new AppException(ErrorCode.BAD_REQUEST,
                                         "Cần cung cấp thông tin xe để kích hoạt lần đầu");
@@ -161,7 +161,7 @@ public class DriverService {
                 userProfileCacheRepository.evict(userEmail);
 
                 String token = jwtUtil.generateToken(user.getEmail(), UserRole.CUSTOMER.name());
-                log.info("Driver [{}] switched back to Customer mode → role=CUSTOMER, Offline", user.getEmail());
+                log.info("Driver [{}] switched back to Customer mode -> role=CUSTOMER, Offline", user.getEmail());
                 return SwitchRoleResponse.of(token, DriverProfileResponse.from(driver, false));
         }
 
@@ -196,7 +196,7 @@ public class DriverService {
                 driver = driverRepository.save(driver);
                 cacheRepository.evict(userEmail);
 
-                log.info("Driver [{}] status updated → {}", user.getEmail(),
+                log.info("Driver [{}] status updated -> {}", user.getEmail(),
                                 desired ? "Online" : "Offline");
                 return DriverProfileResponse.from(driver, false);
         }
@@ -207,8 +207,8 @@ public class DriverService {
          * <p>
          * Cache-Aside pattern:
          * <ol>
-         * <li>Kiểm tra Redis trước (HIT → trả về ngay).</li>
-         * <li>MISS → query DB → lưu vào Redis → trả về.</li>
+         * <li>Kiểm tra Redis trước (HIT -> trả về ngay).</li>
+         * <li>MISS -> query DB -> lưu vào Redis -> trả về.</li>
          * </ol>
          */
         @Transactional(readOnly = true)

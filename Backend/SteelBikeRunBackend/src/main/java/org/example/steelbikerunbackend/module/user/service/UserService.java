@@ -24,8 +24,8 @@ public class UserService {
      *
      * <p>Cache-Aside pattern:
      * <ol>
-     *   <li>Kiểm tra Redis trước (HIT → trả về ngay).</li>
-     *   <li>MISS → query PostgreSQL → lưu vào Redis → trả về.</li>
+     *   <li>Kiểm tra Redis trước (HIT -> trả về ngay).</li>
+     *   <li>MISS -> query PostgreSQL -> lưu vào Redis -> trả về.</li>
      * </ol>
      */
     @Transactional(readOnly = true)
@@ -34,7 +34,7 @@ public class UserService {
         // 1. Kiểm tra Redis
         return cacheRepository.get(email).orElseGet(() -> {
 
-            // 2. Redis MISS → query DB
+            // 2. Redis MISS -> query DB
             User user = userRepository.findByEmail(email)
                     .orElseThrow(() -> new AppException(ErrorCode.USER_NOT_FOUND));
 
