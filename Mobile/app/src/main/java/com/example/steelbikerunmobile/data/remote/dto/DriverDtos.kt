@@ -39,12 +39,30 @@ data class DriverProfileDto(
     val isNewProfile: Boolean?
 )
 
-data class LocationHeartbeatDto(
-    val lat: Double,
-    val lng: Double,
-    val h3Index: String?,
+/**
+ * Gửi lên backend mỗi 3 giây từ tài xế đang online.
+ * Field names phải khớp chính xác với LocationUpdateRequest.java của backend:
+ *   latitude / longitude (không phải lat/lng)
+ * h3Index KHÔNG gửi lên — backend tự tính từ lat/lng bằng H3Core.
+ */
+data class LocationUpdateRequestDto(
+    val latitude: Double,
+    val longitude: Double,
     val heading: Float?,
     val speed: Float?
+)
+
+/**
+ * Response từ POST /api/v1/driver/location.
+ * Server trả về h3Index đã tính (resolution=9, ~174m hexagon)
+ * để mobile cập nhật overlay bản đồ mà không cần tính lại client-side.
+ */
+data class LocationUpdateResponseDto(
+    val driverId: String,
+    val latitude: Double,
+    val longitude: Double,
+    val h3Index: String,
+    val updatedAt: String
 )
 
 data class NearbyDriverDto(

@@ -45,6 +45,7 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -98,6 +99,16 @@ fun DriverHomeScreen(
             )
         }
         viewModel.onToggleOnlineClicked(hasLocationPermission())
+    }
+
+    // Khi profile được load và driver đang online nhưng stream chưa chạy
+    // (vd: vừa switch từ Customer→Driver, permission đã có sẵn),
+    // thì tự động khởi động GPS stream.
+    val isOnline = uiState.profile?.isOnline == true
+    LaunchedEffect(isOnline) {
+        if (isOnline && !uiState.isStreamingLocation && hasLocationPermission()) {
+            viewModel.startLocationStream()
+        }
     }
 
     Box(modifier = Modifier.fillMaxSize()) {
@@ -327,7 +338,13 @@ private fun DriverBottomPanel(
                     StatChip(
                         emoji = if (online) "📡" else "💤",
                         label = "GPS",
-                        value = if (uiState.isStreamingLocation) "Live" else "Off"
+                        // Khi có h3Index từ server → cho thấy heartbeat đang hoạt động
+                        value = when {
+                            uiState.currentH3Index != null ->
+                                "…${uiState.currentH3Index.takeLast(4)}"
+                            uiState.isStreamingLocation -> "Live"
+                            else -> "Off"
+                        }
                     )
                 }
             }

@@ -5,7 +5,7 @@ import com.example.steelbikerunmobile.data.remote.NetworkErrorMapper
 import com.example.steelbikerunmobile.data.remote.api.DriverApiService
 import com.example.steelbikerunmobile.data.remote.dto.DriverProfileDto
 import com.example.steelbikerunmobile.data.remote.dto.DriverStatusRequestDto
-import com.example.steelbikerunmobile.data.remote.dto.LocationHeartbeatDto
+import com.example.steelbikerunmobile.data.remote.dto.LocationUpdateRequestDto
 import com.example.steelbikerunmobile.data.remote.dto.NearbyDriverDto
 import com.example.steelbikerunmobile.data.remote.dto.SwitchDriverRequestDto
 import com.example.steelbikerunmobile.data.remote.dto.SwitchRoleResponseDto
@@ -19,6 +19,8 @@ import com.example.steelbikerunmobile.domain.model.VehicleInfo
 import com.example.steelbikerunmobile.domain.repository.AuthRepository
 import com.example.steelbikerunmobile.domain.repository.DriverRepository
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.asStateFlow
 import javax.inject.Inject
 
 class DriverRepositoryImpl @Inject constructor(
@@ -27,6 +29,10 @@ class DriverRepositoryImpl @Inject constructor(
     private val locationStreamProvider: LocationStreamProvider,
     private val webSocketManager: WebSocketManager
 ) : DriverRepository {
+
+    // H3 cell index tính bởi server sau mỗi heartbeat thành công.
+    // Null khi chưa có heartbeat hoặc server chưa trả về.
+    private val _currentH3Index = MutableStateFlow<String?>(null)
 
     override suspend fun getProfile(): Result<DriverProfile> = NetworkErrorMapper.safeCall {
         val envelope = driverApiService.getProfile()
@@ -81,22 +87,30 @@ class DriverRepositoryImpl @Inject constructor(
     override fun observeLocation(): Flow<LocationHeartbeat> = locationStreamProvider.observeLocation()
 
     override suspend fun sendLocationHeartbeat(heartbeat: LocationHeartbeat) {
-        webSocketManager.sendDriverLocation(
-            latitude = heartbeat.location.latitude,
-            longitude = heartbeat.location.longitude
-        )
+        // Ghi vị trí lên Backend qua REST (POST /api/v1/driver/location).
+        // Backend ghi vào Redis (write-behind Postgres mỗi 30s).
+        //
+        // WebSocket KHÔNG được dùng ở đây vì:
+        //   1. Backend chưa có STOMP endpoint cho driver location (placeholder only).
+        //   2. WebSocketManager.connect() dùng runBlocking trên coroutine dispatcher
+        //      → tiềm ẩn deadlock trên Main thread.
+        // WS sẽ được kích hoạt khi backend triển khai WebSocket Matching Engine.
         runCatching {
-            driverApiService.postLocation(
-                LocationHeartbeatDto(
-                    lat = heartbeat.location.latitude,
-                    lng = heartbeat.location.longitude,
-                    h3Index = DemoMapData.pseudoH3Index(heartbeat.location),
+            val response = driverApiService.postLocation(
+                LocationUpdateRequestDto(
+                    latitude = heartbeat.location.latitude,
+                    longitude = heartbeat.location.longitude,
                     heading = heartbeat.heading,
                     speed = heartbeat.speedMetersPerSecond
                 )
             )
+            // Server tính h3Index từ lat/lng (resolution=9, ~174m hexagon).
+            // Cập nhật flow để ViewModel có thể hiển thị cell hiện tại trên bản đồ.
+            response.data?.h3Index?.let { _currentH3Index.value = it }
         }
     }
+
+    override fun observeCurrentH3Index(): Flow<String?> = _currentH3Index.asStateFlow()
 
     override suspend fun getNearbyDrivers(latitude: Double, longitude: Double): Result<List<NearbyDriver>> {
         return runCatching {
@@ -108,6 +122,7 @@ class DriverRepositoryImpl @Inject constructor(
 
     override fun stopRealtime() {
         webSocketManager.disconnect()
+        _currentH3Index.value = null
     }
 
     private fun VehicleInfo.toDto(): SwitchDriverRequestDto {

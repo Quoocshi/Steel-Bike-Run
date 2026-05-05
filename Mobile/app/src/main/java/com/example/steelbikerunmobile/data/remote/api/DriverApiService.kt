@@ -3,7 +3,8 @@ package com.example.steelbikerunmobile.data.remote.api
 import com.example.steelbikerunmobile.data.remote.dto.ApiEnvelope
 import com.example.steelbikerunmobile.data.remote.dto.DriverProfileDto
 import com.example.steelbikerunmobile.data.remote.dto.DriverStatusRequestDto
-import com.example.steelbikerunmobile.data.remote.dto.LocationHeartbeatDto
+import com.example.steelbikerunmobile.data.remote.dto.LocationUpdateRequestDto
+import com.example.steelbikerunmobile.data.remote.dto.LocationUpdateResponseDto
 import com.example.steelbikerunmobile.data.remote.dto.NearbyDriverDto
 import com.example.steelbikerunmobile.data.remote.dto.SwitchDriverRequestDto
 import com.example.steelbikerunmobile.data.remote.dto.SwitchRoleResponseDto
@@ -58,8 +59,13 @@ interface DriverApiService {
         @Body request: DriverStatusRequestDto
     ): ApiEnvelope<DriverProfileDto>
 
+    /**
+     * Driver gửi vị trí GPS lên server (heartbeat mỗi 3 giây).
+     * Backend ghi vào Redis (TTL 60s), tính h3Index và trả về trong response.
+     * Chỉ DRIVER đang ONLINE mới gọi được (JWT DRIVER role required).
+     */
     @POST("api/v1/driver/location")
-    suspend fun postLocation(@Body heartbeat: LocationHeartbeatDto): ApiEnvelope<Unit>
+    suspend fun postLocation(@Body request: LocationUpdateRequestDto): ApiEnvelope<LocationUpdateResponseDto>
 
     @GET("api/v1/driver/nearby")
     suspend fun getNearbyDrivers(
