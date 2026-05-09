@@ -200,4 +200,71 @@ public class DriverController {
                 LocationUpdateResponse response = driverLocationService.updateLocation(userEmail, request);
                 return ResponseEntity.ok(ApiResponse.success("Vị trí đã được cập nhật", response));
         }
+
+        // -------------------------------------------------------------------------
+        // 6. NEARBY DRIVERS (Customer k-ring search)
+        // -------------------------------------------------------------------------
+
+        /**
+         * Customer tìm tài xế đang online gần nhất với điểm đón.
+         * Dùng H3 k-ring để xác định vùng tìm kiếm, đọc toàn bộ từ Redis.
+         */
+        @Operation(summary = "Tìm tài xế gần nhất (CUSTOMER only)", description = """
+                        Chỉ tài khoản **CUSTOMER** được gọi endpoint này.
+
+                        **Thuật toán:**
+                        1. Tính H3 cell (resolution=9) của điểm đón.
+                        2. `gridDisk(k)` → tập các ô lân cận (k=2 → 19 ô, bán kính ~350m).
+                        3. `SUNION` Redis: lấy tất cả `driverId` đang online trong vùng đó.
+                        4. Tính khoảng cách Haversine → sort tăng dần → trả top `limit` driver.
+
+                        **Query params:**
+                        - `lat`, `lng`: tọa độ điểm đón (bắt buộc).
+                        - `k`: bán kính k-ring (mặc định 2, tối đa 5).
+                        - `limit`: số driver tối đa (mặc định 5, tối đa 20).
+
+                        **Toàn bộ dữ liệu đọc từ Redis** → latency < 5ms.
+                        """)
+        @ApiResponses({
+                        @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "200", description = "Trả về danh sách driver gần nhất (có thể rỗng)"),
+                        @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "400", description = "Tọa độ không hợp lệ hoặc k/limit vượt giới hạn"),
+                        @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "403", description = "Tài khoản không phải CUSTOMER")
+        })
+        @PreAuthorize("hasRole('CUSTOMER')")
+        @GetMapping("/nearby")
+        public ResponseEntity<ApiResponse<java.util.List<org.example.steelbikerunbackend.module.driver.dto.NearbyDriverResponse>>> findNearbyDrivers(
+                        @io.swagger.v3.oas.annotations.Parameter(description = "Vĩ độ điểm đón", example = "10.7769", required = true)
+                        @RequestParam double lat,
+
+                        @io.swagger.v3.oas.annotations.Parameter(description = "Kinh độ điểm đón", example = "106.7009", required = true)
+                        @RequestParam double lng,
+
+                        @io.swagger.v3.oas.annotations.Parameter(description = "Bán kính k-ring H3 (1–5), mặc định 2", example = "2")
+                        @RequestParam(defaultValue = "2") int k,
+
+                        @io.swagger.v3.oas.annotations.Parameter(description = "Số driver tối đa trả về (1–20), mặc định 5", example = "5")
+                        @RequestParam(defaultValue = "5") int limit) {
+
+                // Validate tham số đầu vào
+                if (lat < -90 || lat > 90 || lng < -180 || lng > 180) {
+                        return ResponseEntity.badRequest()
+                                        .body(ApiResponse.error("Tọa độ lat/lng không hợp lệ"));
+                }
+                if (k < 1 || k > 5) {
+                        return ResponseEntity.badRequest()
+                                        .body(ApiResponse.error("Tham số k phải nằm trong [1, 5]"));
+                }
+                if (limit < 1 || limit > 20) {
+                        return ResponseEntity.badRequest()
+                                        .body(ApiResponse.error("Tham số limit phải nằm trong [1, 20]"));
+                }
+
+                var drivers = driverLocationService.findNearbyDrivers(lat, lng, k, limit);
+
+                String message = drivers.isEmpty()
+                                ? "Không có tài xế nào trong khu vực này. Hãy thử mở rộng vùng tìm kiếm."
+                                : "Tìm thấy " + drivers.size() + " tài xế gần nhất.";
+
+                return ResponseEntity.ok(ApiResponse.success(message, drivers));
+        }
 }
