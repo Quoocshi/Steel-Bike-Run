@@ -32,6 +32,14 @@ interface DriverRepository {
 
     fun observeLocation(): Flow<LocationHeartbeat>
     suspend fun sendLocationHeartbeat(heartbeat: LocationHeartbeat)
+
+    /**
+     * Stream H3 cell index hiện tại của tài xế, được cập nhật sau mỗi heartbeat thành công.
+     * Giá trị null khi chưa có heartbeat nào thành công hoặc tài xế offline.
+     * Backend tính h3Index (resolution=9) từ lat/lng — mobile chỉ hiển thị kết quả.
+     */
+    fun observeCurrentH3Index(): Flow<String?>
+
     suspend fun getNearbyDrivers(latitude: Double, longitude: Double): Result<List<NearbyDriver>>
     fun stopRealtime()
 }

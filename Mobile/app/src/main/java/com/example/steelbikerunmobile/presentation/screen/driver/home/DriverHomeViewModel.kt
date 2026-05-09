@@ -10,6 +10,7 @@ import com.example.steelbikerunmobile.domain.model.SurgeZone
 import com.example.steelbikerunmobile.domain.model.VehicleInfo
 import com.example.steelbikerunmobile.domain.usecase.driver.GetDriverProfileUseCase
 import com.example.steelbikerunmobile.domain.usecase.driver.GetNearbyDriversUseCase
+import com.example.steelbikerunmobile.domain.usecase.driver.ObserveCurrentH3IndexUseCase
 import com.example.steelbikerunmobile.domain.usecase.driver.SetDriverOnlineStatusUseCase
 import com.example.steelbikerunmobile.domain.usecase.driver.StreamLocationUseCase
 import com.example.steelbikerunmobile.domain.usecase.driver.SwitchToCustomerUseCase
@@ -79,6 +80,9 @@ data class DriverHomeUiState(
     val surgeZones: List<SurgeZone> = DemoMapData.surgeZones,
     val isLoading: Boolean = false,
     val isStreamingLocation: Boolean = false,
+    // H3 cell index hiện tại, tính bởi server sau mỗi heartbeat thành công.
+    // Dùng để hiển thị ô H3 tài xế đang đứng và xác nhận kết nối backend đang hoạt động.
+    val currentH3Index: String? = null,
     val errorMessage: String? = null,
     val infoMessage: String? = null,
     // Step machine
@@ -100,15 +104,26 @@ class DriverHomeViewModel @Inject constructor(
     private val setDriverOnlineStatusUseCase: SetDriverOnlineStatusUseCase,
     private val streamLocationUseCase: StreamLocationUseCase,
     private val getNearbyDriversUseCase: GetNearbyDriversUseCase,
+    private val observeCurrentH3IndexUseCase: ObserveCurrentH3IndexUseCase,
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(DriverHomeUiState())
     val uiState: StateFlow<DriverHomeUiState> = _uiState.asStateFlow()
     private var locationJob: Job? = null
+    private var h3IndexJob: Job? = null
 
     init {
         loadProfile()
         refreshNearbyDrivers(DemoMapData.defaultPickup)
+        observeH3Index()
+    }
+
+    private fun observeH3Index() {
+        h3IndexJob = viewModelScope.launch {
+            observeCurrentH3IndexUseCase().collect { h3Index ->
+                _uiState.update { it.copy(currentH3Index = h3Index) }
+            }
+        }
     }
 
     // ── Form fields ───────────────────────────────────────────────────────────
@@ -214,11 +229,24 @@ class DriverHomeViewModel @Inject constructor(
         if (locationJob?.isActive == true) return
         locationJob = viewModelScope.launch {
             _uiState.update { it.copy(isStreamingLocation = true, errorMessage = null) }
-            streamLocationUseCase()
-                .collect { heartbeat ->
-                    _uiState.update { it.copy(currentLocation = heartbeat.location) }
-                    refreshNearbyDrivers(heartbeat.location)
+            try {
+                streamLocationUseCase()
+                    .collect { heartbeat ->
+                        _uiState.update { it.copy(currentLocation = heartbeat.location) }
+                        refreshNearbyDrivers(heartbeat.location)
+                    }
+            } catch (e: SecurityException) {
+                // Permission bị thu hồi giữa chừng
+                _uiState.update {
+                    it.copy(
+                        isStreamingLocation = false,
+                        errorMessage = "Cần cấp quyền vị trí để gửi GPS"
+                    )
                 }
+            } finally {
+                // Flow kết thúc vì bất kỳ lý do gì → reset trạng thái
+                _uiState.update { it.copy(isStreamingLocation = false) }
+            }
         }
     }
 
@@ -321,6 +349,13 @@ class DriverHomeViewModel @Inject constructor(
                         licenseNumber = profile.licenseNumber.orEmpty(),
                     )
                 }
+                // Trường hợp driver vào màn hình này khi đã Online từ trước
+                // (vd: vừa switch từ Customer → Driver, hoặc mở lại app khi đang online).
+                // Backend đã ghi isOnline=true, Mobile cần tự bật GPS stream ngay.
+                // LocationStreamProvider kiểm tra permission nội bộ — an toàn khi gọi không có permission.
+                if (profile.isOnline) {
+                    startLocationStream()
+                }
             }
         }
     }
@@ -340,6 +375,7 @@ class DriverHomeViewModel @Inject constructor(
 
     override fun onCleared() {
         stopLocationStream()
+        h3IndexJob?.cancel()
         super.onCleared()
     }
 }
