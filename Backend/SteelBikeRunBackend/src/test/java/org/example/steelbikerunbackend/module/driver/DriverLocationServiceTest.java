@@ -5,6 +5,7 @@ import org.example.steelbikerunbackend.common.exception.AppException;
 import org.example.steelbikerunbackend.module.driver.cache.DriverLocationCache;
 import org.example.steelbikerunbackend.module.driver.dto.LocationUpdateRequest;
 import org.example.steelbikerunbackend.module.driver.dto.LocationUpdateResponse;
+import org.example.steelbikerunbackend.module.driver.dto.NearbyDriverResponse;
 import org.example.steelbikerunbackend.module.driver.entity.Driver;
 import org.example.steelbikerunbackend.module.driver.repository.DriverLocationRedisRepository;
 import org.example.steelbikerunbackend.module.driver.repository.DriverRepository;
@@ -20,7 +21,10 @@ import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
+import java.time.Instant;
+import java.util.List;
 import java.util.Optional;
+import java.util.Set;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.*;
@@ -51,6 +55,7 @@ class DriverLocationServiceTest {
         driverUser = User.builder()
                 .id(UUID.randomUUID())
                 .email("driver@example.com")
+                .fullName("Nguyễn Văn A")
                 .role(UserRole.DRIVER)
                 .build();
 
@@ -58,6 +63,9 @@ class DriverLocationServiceTest {
                 .id(UUID.randomUUID())
                 .user(driverUser)
                 .vehiclePlate("51G-999.99")
+                .vehicleModel("Honda Wave Alpha")
+                .vehicleColor("Đen")
+                .rating(4.8f)
                 .isOnline(true)
                 .build();
 
@@ -65,6 +73,9 @@ class DriverLocationServiceTest {
                 .id(UUID.randomUUID())
                 .user(driverUser)
                 .vehiclePlate("51G-000.00")
+                .vehicleModel("Yamaha Exciter")
+                .vehicleColor("Trắng")
+                .rating(4.5f)
                 .isOnline(false)
                 .build();
     }
@@ -81,15 +92,12 @@ class DriverLocationServiceTest {
         LocationUpdateRequest req = new LocationUpdateRequest(LAT, LNG, 90.0f, 30.5f);
         LocationUpdateResponse resp = service.updateLocation(driverUser.getEmail(), req);
 
-        // Kiểm tra response
         assertThat(resp.latitude()).isEqualTo(LAT);
         assertThat(resp.longitude()).isEqualTo(LNG);
         assertThat(resp.driverId()).isEqualTo(onlineDriver.getId().toString());
-        // H3 index phải có độ dài hợp lệ (15 chars cho res=9 ở dạng address)
         assertThat(resp.h3Index()).isNotBlank();
         assertThat(resp.updatedAt()).isNotNull();
 
-        // Đảm bảo Redis được ghi đúng
         ArgumentCaptor<DriverLocationCache> cacheCaptor = ArgumentCaptor.forClass(DriverLocationCache.class);
         verify(redisRepository).save(cacheCaptor.capture(), eq(null));
 
@@ -117,7 +125,6 @@ class DriverLocationServiceTest {
 
         service.updateLocation(driverUser.getEmail(), new LocationUpdateRequest(LAT, LNG, null, null));
 
-        // Kiểm tra oldH3Index được truyền vào save() để xóa khỏi ô cũ
         ArgumentCaptor<String> oldH3Captor = ArgumentCaptor.forClass(String.class);
         verify(redisRepository).save(any(DriverLocationCache.class), oldH3Captor.capture());
         assertThat(oldH3Captor.getValue()).isEqualTo(oldH3);
@@ -193,7 +200,6 @@ class DriverLocationServiceTest {
         String h3 = service.latLngToH3(LAT, LNG);
 
         assertThat(h3).isNotBlank();
-        // H3 address string có dạng hex, không dấu tiền tố "0x"
         assertThat(h3).doesNotStartWith("0x");
     }
 
@@ -209,10 +215,142 @@ class DriverLocationServiceTest {
     @Test
     @DisplayName("latLngToH3: Tọa độ khác nhau (cách xa) -> H3 index khác nhau")
     void latLngToH3_DifferentCoords_DifferentCells() {
-        // Hà Nội vs TP.HCM — chắc chắn khác cell
-        String hn = service.latLngToH3(21.0278, 105.8342);
+        String hn  = service.latLngToH3(21.0278, 105.8342);
         String hcm = service.latLngToH3(10.7769, 106.7009);
 
         assertThat(hn).isNotEqualTo(hcm);
+    }
+
+    // --- findNearbyDrivers ---------------------------------------------------
+
+    @Test
+    @DisplayName("findNearbyDrivers: Không có driver trong vùng -> trả về list rỗng")
+    void findNearbyDrivers_NoDriversInArea() {
+        when(redisRepository.findDriverIdsInH3Cells(any())).thenReturn(Set.of());
+
+        List<NearbyDriverResponse> result = service.findNearbyDrivers(LAT, LNG, 2, 5);
+
+        assertThat(result).isEmpty();
+        // Không query DB khi Redis trả rỗng — không cần tốn I/O
+        verifyNoInteractions(driverRepository);
+    }
+
+    @Test
+    @DisplayName("findNearbyDrivers: Có driver online gần -> trả về đúng thông tin")
+    void findNearbyDrivers_ReturnsOnlineDrivers() {
+        String driverId = onlineDriver.getId().toString();
+
+        DriverLocationCache cache = DriverLocationCache.builder()
+                .driverId(driverId)
+                .latitude(LAT + 0.0005)   // cách điểm đón ~0.07 km
+                .longitude(LNG + 0.0005)
+                .h3Index("891f1d4b2a3ffff")
+                .heading(90.0f)
+                .speed(20.0f)
+                .isOnline(true)
+                .updatedAt(Instant.now())
+                .build();
+
+        when(redisRepository.findDriverIdsInH3Cells(any())).thenReturn(Set.of(driverId));
+        when(redisRepository.findAllByDriverIds(any())).thenReturn(List.of(cache));
+        when(driverRepository.findAllByIdInWithUser(any())).thenReturn(List.of(onlineDriver));
+
+        List<NearbyDriverResponse> result = service.findNearbyDrivers(LAT, LNG, 2, 5);
+
+        assertThat(result).hasSize(1);
+        NearbyDriverResponse resp = result.get(0);
+        assertThat(resp.driverId()).isEqualTo(driverId);
+        assertThat(resp.fullName()).isEqualTo("Nguyễn Văn A");
+        assertThat(resp.vehiclePlate()).isEqualTo("51G-999.99");
+        assertThat(resp.vehicleModel()).isEqualTo("Honda Wave Alpha");
+        assertThat(resp.rating()).isEqualTo(4.8f);
+        assertThat(resp.distanceKm()).isGreaterThan(0);
+        assertThat(resp.distanceKm()).isLessThan(1.0);
+        assertThat(resp.heading()).isEqualTo(90.0f);
+    }
+
+    @Test
+    @DisplayName("findNearbyDrivers: Driver offline trong cache bị loại bỏ")
+    void findNearbyDrivers_FiltersOutOfflineDrivers() {
+        String onlineId  = onlineDriver.getId().toString();
+        String offlineId = offlineDriver.getId().toString();
+
+        DriverLocationCache onlineCache = DriverLocationCache.builder()
+                .driverId(onlineId).latitude(LAT).longitude(LNG)
+                .h3Index("cell1").isOnline(true).updatedAt(Instant.now()).build();
+        DriverLocationCache offlineCache = DriverLocationCache.builder()
+                .driverId(offlineId).latitude(LAT + 0.001).longitude(LNG)
+                .h3Index("cell1").isOnline(false).updatedAt(Instant.now()).build();
+
+        when(redisRepository.findDriverIdsInH3Cells(any())).thenReturn(Set.of(onlineId, offlineId));
+        when(redisRepository.findAllByDriverIds(any())).thenReturn(List.of(onlineCache, offlineCache));
+        when(driverRepository.findAllByIdInWithUser(any())).thenReturn(List.of(onlineDriver, offlineDriver));
+
+        List<NearbyDriverResponse> result = service.findNearbyDrivers(LAT, LNG, 2, 5);
+
+        // Driver offline bị lọc bởi cache.isOnline() check
+        assertThat(result).hasSize(1);
+        assertThat(result.get(0).driverId()).isEqualTo(onlineId);
+    }
+
+    @Test
+    @DisplayName("findNearbyDrivers: Nhiều driver -> sort theo khoảng cách tăng dần")
+    void findNearbyDrivers_SortedByDistance() {
+        UUID idA = UUID.randomUUID();
+        UUID idB = UUID.randomUUID();
+
+        User userA = User.builder().id(UUID.randomUUID()).fullName("Tài xế A").build();
+        User userB = User.builder().id(UUID.randomUUID()).fullName("Tài xế B").build();
+
+        Driver driverA = Driver.builder().id(idA).user(userA)
+                .vehiclePlate("51A-111").vehicleModel("Honda").vehicleColor("Đỏ").rating(4.0f).isOnline(true).build();
+        Driver driverB = Driver.builder().id(idB).user(userB)
+                .vehiclePlate("51B-222").vehicleModel("Yamaha").vehicleColor("Xanh").rating(4.9f).isOnline(true).build();
+
+        // A cách ~2km, B cách ~0.05km
+        DriverLocationCache cacheA = DriverLocationCache.builder()
+                .driverId(idA.toString()).latitude(LAT + 0.018).longitude(LNG)
+                .h3Index("cellA").isOnline(true).updatedAt(Instant.now()).build();
+        DriverLocationCache cacheB = DriverLocationCache.builder()
+                .driverId(idB.toString()).latitude(LAT + 0.0005).longitude(LNG)
+                .h3Index("cellB").isOnline(true).updatedAt(Instant.now()).build();
+
+        when(redisRepository.findDriverIdsInH3Cells(any())).thenReturn(Set.of(idA.toString(), idB.toString()));
+        when(redisRepository.findAllByDriverIds(any())).thenReturn(List.of(cacheA, cacheB));
+        when(driverRepository.findAllByIdInWithUser(any())).thenReturn(List.of(driverA, driverB));
+
+        List<NearbyDriverResponse> result = service.findNearbyDrivers(LAT, LNG, 2, 5);
+
+        assertThat(result).hasSize(2);
+        // B gần hơn -> đứng trước
+        assertThat(result.get(0).driverId()).isEqualTo(idB.toString());
+        assertThat(result.get(1).driverId()).isEqualTo(idA.toString());
+        assertThat(result.get(0).distanceKm()).isLessThan(result.get(1).distanceKm());
+    }
+
+    @Test
+    @DisplayName("findNearbyDrivers: Giới hạn kết quả theo tham số limit")
+    void findNearbyDrivers_RespectsLimit() {
+        UUID id1 = UUID.randomUUID(), id2 = UUID.randomUUID(), id3 = UUID.randomUUID();
+        User u1 = User.builder().id(UUID.randomUUID()).fullName("D1").build();
+        User u2 = User.builder().id(UUID.randomUUID()).fullName("D2").build();
+        User u3 = User.builder().id(UUID.randomUUID()).fullName("D3").build();
+
+        Driver d1 = Driver.builder().id(id1).user(u1).vehiclePlate("P1").vehicleModel("M").vehicleColor("C").rating(4f).isOnline(true).build();
+        Driver d2 = Driver.builder().id(id2).user(u2).vehiclePlate("P2").vehicleModel("M").vehicleColor("C").rating(4f).isOnline(true).build();
+        Driver d3 = Driver.builder().id(id3).user(u3).vehiclePlate("P3").vehicleModel("M").vehicleColor("C").rating(4f).isOnline(true).build();
+
+        DriverLocationCache c1 = DriverLocationCache.builder().driverId(id1.toString()).latitude(LAT + 0.001).longitude(LNG).h3Index("x").isOnline(true).updatedAt(Instant.now()).build();
+        DriverLocationCache c2 = DriverLocationCache.builder().driverId(id2.toString()).latitude(LAT + 0.002).longitude(LNG).h3Index("x").isOnline(true).updatedAt(Instant.now()).build();
+        DriverLocationCache c3 = DriverLocationCache.builder().driverId(id3.toString()).latitude(LAT + 0.003).longitude(LNG).h3Index("x").isOnline(true).updatedAt(Instant.now()).build();
+
+        when(redisRepository.findDriverIdsInH3Cells(any())).thenReturn(Set.of(id1.toString(), id2.toString(), id3.toString()));
+        when(redisRepository.findAllByDriverIds(any())).thenReturn(List.of(c1, c2, c3));
+        when(driverRepository.findAllByIdInWithUser(any())).thenReturn(List.of(d1, d2, d3));
+
+        // Có 3 driver nhưng xin limit=2
+        List<NearbyDriverResponse> result = service.findNearbyDrivers(LAT, LNG, 2, 2);
+
+        assertThat(result).hasSize(2);
     }
 }

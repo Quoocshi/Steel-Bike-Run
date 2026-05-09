@@ -8,6 +8,7 @@ import org.example.steelbikerunbackend.common.exception.ErrorCode;
 import org.example.steelbikerunbackend.module.driver.cache.DriverLocationCache;
 import org.example.steelbikerunbackend.module.driver.dto.LocationUpdateRequest;
 import org.example.steelbikerunbackend.module.driver.dto.LocationUpdateResponse;
+import org.example.steelbikerunbackend.module.driver.dto.NearbyDriverResponse;
 import org.example.steelbikerunbackend.module.driver.entity.Driver;
 import org.example.steelbikerunbackend.module.driver.repository.DriverLocationRedisRepository;
 import org.example.steelbikerunbackend.module.driver.repository.DriverRepository;
@@ -17,7 +18,14 @@ import org.springframework.stereotype.Service;
 
 import java.io.IOException;
 import java.time.Instant;
+import java.util.Comparator;
+import java.util.List;
+import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
+import java.util.UUID;
+import java.util.function.Function;
+import java.util.stream.Collectors;
 
 /**
  * Orchestrator cho việc cập nhật và đọc vị trí tài xế.
@@ -132,6 +140,95 @@ public class DriverLocationService {
     }
 
     // -------------------------------------------------------------------------
+    // READ PATH: Customer tìm tài xế gần nhất (k-ring search)
+    // -------------------------------------------------------------------------
+
+    /**
+     * Tìm tối đa {@code limit} tài xế đang online gần nhất với điểm đón.
+     *
+     * <h3>Pipeline:</h3>
+     * <ol>
+     *   <li>Tính H3 cell của điểm đón (resolution=9).</li>
+     *   <li>gridDisk(k=2) → 19 ô H3 lân cận.</li>
+     *   <li>SUNION Redis: lấy tất cả driverId đang online trong 19 ô đó.</li>
+     *   <li>Đọc DriverLocationCache từng driver (vẫn từ Redis — tươi nhất).</li>
+     *   <li>Batch load Driver entity từ Postgres (1 query JOIN FETCH) — lấy tên, xe, rating.</li>
+     *   <li>Tính Haversine distance → sort tăng dần → lấy top {@code limit}.</li>
+     * </ol>
+     *
+     * @param pickupLat vĩ độ điểm đón
+     * @param pickupLng kinh độ điểm đón
+     * @param kRing     bán kính k-ring (mặc định 2 → 19 cells, ~350m)
+     * @param limit     số driver tối đa trả về
+     */
+    public List<NearbyDriverResponse> findNearbyDrivers(double pickupLat, double pickupLng,
+                                                        int kRing, int limit) {
+        H3Core h3 = getH3Core();
+
+        // Bước 1: cell của điểm đón
+        String pickupH3 = latLngToH3(pickupLat, pickupLng);
+
+        // Bước 2: k-ring → tập các ô lân cận (k=2 cho 19 ô, bán kính ~350m)
+        List<String> searchCells = h3.gridDisk(pickupH3, kRing);
+        log.debug("[NearbyDrivers] k-ring={}, pickup_h3={}, cells={}", kRing, pickupH3, searchCells.size());
+
+        // Bước 3: SUNION Redis → Set<driverId>
+        Set<Object> driverIdObjects = redisRepository.findDriverIdsInH3Cells(searchCells);
+        if (driverIdObjects.isEmpty()) {
+            log.debug("[NearbyDrivers] Không tìm thấy driver nào trong vùng.");
+            return List.of();
+        }
+
+        // Bước 4: Đọc location cache từ Redis cho từng driver
+        List<DriverLocationCache> caches = redisRepository.findAllByDriverIds(driverIdObjects);
+
+        // Chuyển caches thành Map để join nhanh với DB result
+        Map<String, DriverLocationCache> cacheByDriverId = caches.stream()
+                .collect(Collectors.toMap(DriverLocationCache::getDriverId, c -> c));
+
+        // Bước 5: Batch load Driver entity (1 query duy nhất, JOIN FETCH User)
+        List<UUID> uuids = cacheByDriverId.keySet().stream()
+                .map(id -> {
+                    try { return UUID.fromString(id); }
+                    catch (IllegalArgumentException e) { return null; }
+                })
+                .filter(id -> id != null)
+                .collect(Collectors.toList());
+
+        Map<UUID, Driver> driverMap = driverRepository.findAllByIdInWithUser(uuids).stream()
+                .collect(Collectors.toMap(Driver::getId, Function.identity()));
+
+        // Bước 6: Build response, tính Haversine, sort, lấy top limit
+        return driverMap.values().stream()
+                .filter(driver -> {
+                    DriverLocationCache cache = cacheByDriverId.get(driver.getId().toString());
+                    // Chỉ lấy driver đang online (double-check với cache)
+                    return cache != null && cache.isOnline();
+                })
+                .map(driver -> {
+                    DriverLocationCache cache = cacheByDriverId.get(driver.getId().toString());
+                    double distKm = haversineKm(pickupLat, pickupLng, cache.getLatitude(), cache.getLongitude());
+                    return new NearbyDriverResponse(
+                            driver.getId().toString(),
+                            driver.getUser().getFullName(),
+                            driver.getVehiclePlate(),
+                            driver.getVehicleModel(),
+                            driver.getVehicleColor(),
+                            driver.getRating(),
+                            cache.getLatitude(),
+                            cache.getLongitude(),
+                            cache.getH3Index(),
+                            distKm,
+                            cache.getHeading(),
+                            cache.getSpeed()
+                    );
+                })
+                .sorted(Comparator.comparingDouble(NearbyDriverResponse::distanceKm))
+                .limit(limit)
+                .collect(Collectors.toList());
+    }
+
+    // -------------------------------------------------------------------------
     // HELPER: H3
     // -------------------------------------------------------------------------
 
@@ -169,5 +266,29 @@ public class DriverLocationService {
      */
     public DriverLocationRedisRepository getRedisRepository() {
         return redisRepository;
+    }
+
+    // -------------------------------------------------------------------------
+    // HELPER: Haversine distance
+    // -------------------------------------------------------------------------
+
+    /**
+     * Tính khoảng cách giữa 2 điểm địa lý theo công thức Haversine.
+     * Độ chính xác đủ cho bài toán tìm driver gần nhất (~0.5% sai số).
+     *
+     * @return khoảng cách tính bằng km
+     */
+    private double haversineKm(double lat1, double lng1, double lat2, double lng2) {
+        final double EARTH_RADIUS_KM = 6371.0;
+
+        double dLat = Math.toRadians(lat2 - lat1);
+        double dLng = Math.toRadians(lng2 - lng1);
+
+        double a = Math.sin(dLat / 2) * Math.sin(dLat / 2)
+                + Math.cos(Math.toRadians(lat1)) * Math.cos(Math.toRadians(lat2))
+                * Math.sin(dLng / 2) * Math.sin(dLng / 2);
+
+        double c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+        return EARTH_RADIUS_KM * c;
     }
 }

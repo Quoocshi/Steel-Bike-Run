@@ -28,4 +28,9 @@ public class ApiResponse<T> {
     public static <T> ApiResponse<T> error(int code, String message) {
         return new ApiResponse<>(code, message, null);
     }
+
+    // Shorthand cho validation lỗi 400 — tránh phải truyền code mỗi lần
+    public static <T> ApiResponse<T> error(String message) {
+        return new ApiResponse<>(400, message, null);
+    }
 }
