@@ -168,117 +168,25 @@ jobs:
       - name: Verify Maven build (compile + verify lifecycle)
         run: mvn -B verify -DskipTests --no-transfer-progress
 
-  # JOB 3: Docker Build & Push (CHỈ chạy khi push vào main)
-  docker-build-push:
-    name: Docker Build & Push to Hub
+  # JOB 3: Deploy lên Azure Web App (CHỈ chạy khi push vào main)
+  deploy-to-azure:
+    name: Deploy lên Azure Web App
     runs-on: ubuntu-latest
     needs: [build-and-test, code-quality]
-    # Chỉ chạy khi push thẳng vào main (không chạy với PR)
     if: github.ref == 'refs/heads/main' && github.event_name == 'push'
 
     steps:
-      - name: Checkout source
-        uses: actions/checkout@v4
-
-      # Tạo lại application.properties chứa biến môi trường bên trong Docker image
-      - name: Inject application.properties cho Docker build
-        run: |
-          mkdir -p Backend/SteelBikeRunBackend/src/main/resources
-          cat > Backend/SteelBikeRunBackend/src/main/resources/application.properties << 'EOF'
-          spring.application.name=SteelBikeRunBackend
-          server.port=8081
-          app.jwt.secret=${{ secrets.JWT_SECRET }}
-          app.jwt.expiration-ms=${{ secrets.JWT_EXPIRATION_MS }}
-          spring.datasource.url=${{ secrets.DB_URL }}
-          spring.datasource.username=${{ secrets.DB_USERNAME }}
-          spring.datasource.password=${{ secrets.DB_PASSWORD }}
-          spring.datasource.driver-class-name=org.postgresql.Driver
-          spring.datasource.hikari.maximum-pool-size=5
-          spring.datasource.hikari.minimum-idle=2
-          spring.datasource.hikari.connection-timeout=30000
-          spring.datasource.hikari.idle-timeout=600000
-          spring.datasource.hikari.max-lifetime=1800000
-          spring.datasource.hikari.keepalive-time=60000
-          spring.jpa.database-platform=org.hibernate.dialect.PostgreSQLDialect
-          spring.jpa.hibernate.ddl-auto=validate
-          spring.jpa.show-sql=false
-          spring.jpa.properties.hibernate.format_sql=false
-          spring.jpa.properties.hibernate.jdbc.time_zone=UTC
-          springdoc.swagger-ui.path=/swagger-ui.html
-          springdoc.swagger-ui.tags-sorter=alpha
-          springdoc.swagger-ui.operations-sorter=alpha
-          springdoc.swagger-ui.display-request-duration=true
-          springdoc.api-docs.path=/v3/api-docs
-          springdoc.paths-to-exclude=/app/**,/topic/**
-          spring.flyway.baseline-on-migrate=true
-          spring.data.redis.host=${{ secrets.REDIS_HOST }}
-          spring.data.redis.port=${{ secrets.REDIS_PORT }}
-          spring.data.redis.password=${{ secrets.REDIS_PASSWORD }}
-          spring.data.redis.username=default
-          spring.data.redis.connect-timeout=5000
-          spring.data.redis.timeout=3000
-          app.cache.profile-ttl-minutes=10
-          EOF
-
-      - name: Đăng nhập Docker Hub
-        uses: docker/login-action@v3
+      - name: Download JAR artifact
+        uses: actions/download-artifact@v4
         with:
-          username: ${{ secrets.DOCKERHUB_USERNAME }}
-          password: ${{ secrets.DOCKERHUB_TOKEN }}
+          name: backend-jar
 
-      - name: Tạo metadata (tag) cho Docker image
-        id: meta
-        uses: docker/metadata-action@v5
+      - name: Deploy to Azure Web App
+        uses: azure/webapps-deploy@v2
         with:
-          images: ${{ secrets.DOCKERHUB_USERNAME }}/steel-bike-run-backend
-          tags: |
-            type=raw,value=latest
-            type=sha,prefix=sha-,format=short
-
-      - name: Build & Push Docker image lên Docker Hub
-        uses: docker/build-push-action@v5
-        with:
-          context: Backend/SteelBikeRunBackend
-          file: Backend/SteelBikeRunBackend/Dockerfile
-          push: true
-          tags: ${{ steps.meta.outputs.tags }}
-
-  # JOB 4: Deploy lên AWS EC2 (CHỈ chạy khi push vào main)
-  deploy-to-ec2:
-    name: Deploy lên AWS EC2
-    runs-on: ubuntu-latest
-    needs: docker-build-push
-    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
-
-    steps:
-      - name: SSH vào EC2 và deploy bản mới
-        uses: appleboy/ssh-action@v1.0.3
-        with:
-          host: ${{ secrets.EC2_HOST }}
-          username: ${{ secrets.EC2_USER }}
-          key: ${{ secrets.EC2_SSH_KEY }}
-          script: |
-            # Đăng nhập Docker Hub trên EC2
-            echo "${{ secrets.DOCKERHUB_TOKEN }}" | docker login -u "${{ secrets.DOCKERHUB_USERNAME }}" --password-stdin
-
-            # Kéo image mới nhất về EC2
-            docker pull ${{ secrets.DOCKERHUB_USERNAME }}/steel-bike-run-backend:latest
-
-            # Dừng và xóa container cũ (nếu đang chạy)
-            docker stop steel-bike-backend || true
-            docker rm steel-bike-backend || true
-
-            # Chạy container mới với cổng 8081
-            docker run -d \
-              --name steel-bike-backend \
-              --restart unless-stopped \
-              -p 8081:8081 \
-              ${{ secrets.DOCKERHUB_USERNAME }}/steel-bike-run-backend:latest
-
-            # Dọn dẹp image cũ không dùng nữa để tiết kiệm ổ đĩa
-            docker image prune -f
-
-            echo "Deploy thành công! Container đang chạy."
+          app-name: ${{ secrets.AZURE_WEBAPP_NAME }}
+          publish-profile: ${{ secrets.AZURE_WEBAPP_PUBLISH_PROFILE }}
+          package: '*.jar'
 
   # JOB 5: Thông báo kết quả cuối
   notify:
