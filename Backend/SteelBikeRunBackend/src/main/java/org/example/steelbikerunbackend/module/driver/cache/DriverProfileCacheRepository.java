@@ -25,7 +25,7 @@ public class DriverProfileCacheRepository {
     private static final String KEY_PREFIX = "driver:profile:";
     private static final Duration TTL = Duration.ofMinutes(10);
 
-    // ─── Read ──────────────────────────────────────────────
+    // --- Read ----------------------------------------------
     public Optional<DriverProfileResponse> get(String email) {
         String key = buildKey(email);
         try {
@@ -41,7 +41,7 @@ public class DriverProfileCacheRepository {
         return Optional.empty();
     }
 
-    // ─── Write ─────────────────────────────────────────────
+    // --- Write ---------------------------------------------
     public void put(String email, DriverProfileResponse profile) {
         String key = buildKey(email);
         try {
@@ -52,7 +52,7 @@ public class DriverProfileCacheRepository {
         }
     }
 
-    // ─── Evict (gọi khi profile thay đổi, vd: switch online) ──
+    // --- Evict (gọi khi profile thay đổi, vd: switch online) --
     public void evict(String email) {
         String key = buildKey(email);
         try {
@@ -63,7 +63,7 @@ public class DriverProfileCacheRepository {
         }
     }
 
-    // ───────────────────────────────────────────────────────
+    // -------------------------------------------------------
     private String buildKey(String email) {
         return KEY_PREFIX + email;
     }

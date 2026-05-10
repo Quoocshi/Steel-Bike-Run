@@ -3,7 +3,6 @@ package com.example.steelbikerunmobile.data.remote.websocket
 import com.example.steelbikerunmobile.BuildConfig
 import com.example.steelbikerunmobile.data.local.datastore.AuthPreferencesDataStore
 import kotlinx.coroutines.flow.first
-import kotlinx.coroutines.runBlocking
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.Response
@@ -13,6 +12,17 @@ import org.json.JSONObject
 import javax.inject.Inject
 import javax.inject.Singleton
 
+/**
+ * WebSocket client dùng cho các tính năng realtime cần STOMP broker:
+ *   - Nhận thông báo trip mới (Matching Engine → Driver)
+ *   - (Tương lai) Broadcast vị trí driver → Customer
+ *
+ * Hiện tại backend chưa triển khai WebSocket Matching Engine (placeholder).
+ * Class này được giữ sẵn sàng để kích hoạt khi backend hoàn thiện.
+ *
+ * KHÔNG dùng WebSocket để gửi location heartbeat — heartbeat đi qua REST
+ * (POST /api/v1/driver/location) vì backend đã implement endpoint đó.
+ */
 @Singleton
 class WebSocketManager @Inject constructor(
     private val okHttpClient: OkHttpClient,
@@ -20,9 +30,13 @@ class WebSocketManager @Inject constructor(
 ) {
     private var webSocket: WebSocket? = null
 
-    fun connect() {
+    /**
+     * Kết nối WebSocket với JWT token từ DataStore.
+     * Phải gọi từ coroutine context (suspend) để tránh blocking Main thread.
+     */
+    suspend fun connect() {
         if (webSocket != null) return
-        val token = runBlocking { dataStore.tokenFlow.first() }
+        val token = dataStore.tokenFlow.first()
         val requestBuilder = Request.Builder().url(BuildConfig.WS_URL)
         if (!token.isNullOrBlank()) {
             requestBuilder.header("Authorization", "Bearer $token")
@@ -41,8 +55,13 @@ class WebSocketManager @Inject constructor(
         )
     }
 
-    fun sendDriverLocation(latitude: Double, longitude: Double) {
-        connect()
+    /**
+     * Gửi frame STOMP đến /app/driver.location.
+     * Chỉ dùng khi backend WebSocket Matching Engine đã được triển khai.
+     * Hiện tại heartbeat qua REST (DriverApiService.postLocation) là primary path.
+     */
+    suspend fun sendDriverLocation(latitude: Double, longitude: Double) {
+        if (webSocket == null) connect()
         val payload = JSONObject()
             .put("lat", latitude)
             .put("lng", longitude)

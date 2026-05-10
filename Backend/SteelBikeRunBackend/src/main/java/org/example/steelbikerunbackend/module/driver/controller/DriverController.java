@@ -9,15 +9,18 @@ import lombok.RequiredArgsConstructor;
 import org.example.steelbikerunbackend.common.response.ApiResponse;
 import org.example.steelbikerunbackend.module.driver.dto.DriverProfileResponse;
 import org.example.steelbikerunbackend.module.driver.dto.DriverStatusRequest;
+import org.example.steelbikerunbackend.module.driver.dto.LocationUpdateRequest;
+import org.example.steelbikerunbackend.module.driver.dto.LocationUpdateResponse;
 import org.example.steelbikerunbackend.module.driver.dto.SwitchDriverRequest;
 import org.example.steelbikerunbackend.module.driver.dto.SwitchRoleResponse;
+import org.example.steelbikerunbackend.module.driver.service.DriverLocationService;
 import org.example.steelbikerunbackend.module.driver.service.DriverService;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.*;
 
-@Tag(name = "Driver", description = "Quản lý tài xế: chuyển đổi chế độ, bật/tắt trạng thái online, xem profile")
+@Tag(name = "Driver", description = "Quản lý tài xế: chuyển đổi chế độ, bật/tắt trạng thái online, cập nhật vị trí")
 @SecurityRequirement(name = "bearerAuth")
 @RestController
 @RequestMapping("/api/v1/driver")
@@ -25,16 +28,17 @@ import org.springframework.web.bind.annotation.*;
 public class DriverController {
 
         private final DriverService driverService;
+        private final DriverLocationService driverLocationService;
 
-        // ─────────────────────────────────────────────────────────────────────────
-        // 1. SWITCH USER → DRIVER MODE
-        // ─────────────────────────────────────────────────────────────────────────
+        // -------------------------------------------------------------------------
+        // 1. SWITCH USER -> DRIVER MODE
+        // -------------------------------------------------------------------------
 
         /**
          * Chuyển user sang chế độ Driver. Chỉ CUSTOMER mới gọi được.
          *
          * <ul>
-         * <li><b>Lần đầu tiên</b>: bắt buộc gửi thông tin xe → tạo profile → tự động
+         * <li><b>Lần đầu tiên</b>: bắt buộc gửi thông tin xe -> tạo profile -> tự động
          * Online.</li>
          * <li><b>Các lần sau</b>: profile đã tồn tại, chỉ đảm bảo trạng thái
          * Online.</li>
@@ -76,9 +80,9 @@ public class DriverController {
                 return ResponseEntity.ok(ApiResponse.success(message, response));
         }
 
-        // ─────────────────────────────────────────────────────────────────────────
-        // 2. SWITCH DRIVER → CUSTOMER MODE
-        // ─────────────────────────────────────────────────────────────────────────
+        // -------------------------------------------------------------------------
+        // 2. SWITCH DRIVER -> CUSTOMER MODE
+        // -------------------------------------------------------------------------
 
         /**
          * Chuyển tài xế về chế độ Customer. Chỉ DRIVER mới gọi được.
@@ -109,9 +113,9 @@ public class DriverController {
                                 .ok(ApiResponse.success("Đã chuyển về chế độ Customer. Trạng thái: Offline", response));
         }
 
-        // ─────────────────────────────────────────────────────────────────────────
+        // -------------------------------------------------------------------------
         // 3. SET ONLINE / OFFLINE (trong Driver Mode)
-        // ─────────────────────────────────────────────────────────────────────────
+        // -------------------------------------------------------------------------
 
         /**
          * Bật / tắt trạng thái online trong khi đang ở Driver Mode.
@@ -144,9 +148,9 @@ public class DriverController {
                 return ResponseEntity.ok(ApiResponse.success(message, response));
         }
 
-        // ─────────────────────────────────────────────────────────────────────────
+        // -------------------------------------------------------------------------
         // 4. GET PROFILE
-        // ─────────────────────────────────────────────────────────────────────────
+        // -------------------------------------------------------------------------
 
         /**
          * Lấy profile Driver của tài xế đang đăng nhập.
@@ -163,5 +167,104 @@ public class DriverController {
 
                 DriverProfileResponse response = driverService.getMyProfile(userEmail);
                 return ResponseEntity.ok(ApiResponse.success(response));
+        }
+
+        // -------------------------------------------------------------------------
+        // 5. LOCATION UPDATE (Driver Heartbeat)
+        // -------------------------------------------------------------------------
+
+        /**
+         * Driver gửi vị trí GPS lên server (heartbeat mỗi 3 giây).
+         * Chỉ DRIVER đang ONLINE mới gọi được.
+         * Vị trí được ghi vào Redis (primary store), KHÔNG ghi Postgres ngay.
+         */
+        @Operation(summary = "Cập nhật vị trí tài xế (heartbeat)", description = """
+                        Chỉ tài khoản **DRIVER** đang online được gọi endpoint này.
+
+                        - App tài xế gọi mỗi 3 giây để cập nhật vị trí GPS.
+                        - Vị trí được ghi vào **Redis** (TTL 60s), không ghi Postgres trực tiếp.
+                        - Postgres sẽ được sync sau mỗi 30 giây bởi Sync Job.
+                        - Response trả về `h3Index` — mobile dùng để vẽ H3 hexagon overlay.
+                        """)
+        @ApiResponses({
+                        @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "200", description = "Cập nhật vị trí thành công"),
+                        @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "400", description = "Tài xế offline hoặc chưa có profile"),
+                        @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "403", description = "Tài khoản không phải DRIVER")
+        })
+        @PreAuthorize("hasRole('DRIVER')")
+        @PostMapping("/location")
+        public ResponseEntity<ApiResponse<LocationUpdateResponse>> updateLocation(
+                        @AuthenticationPrincipal String userEmail,
+                        @Valid @RequestBody LocationUpdateRequest request) {
+
+                LocationUpdateResponse response = driverLocationService.updateLocation(userEmail, request);
+                return ResponseEntity.ok(ApiResponse.success("Vị trí đã được cập nhật", response));
+        }
+
+        // -------------------------------------------------------------------------
+        // 6. NEARBY DRIVERS (Customer k-ring search)
+        // -------------------------------------------------------------------------
+
+        /**
+         * Customer tìm tài xế đang online gần nhất với điểm đón.
+         * Dùng H3 k-ring để xác định vùng tìm kiếm, đọc toàn bộ từ Redis.
+         */
+        @Operation(summary = "Tìm tài xế gần nhất (CUSTOMER only)", description = """
+                        Chỉ tài khoản **CUSTOMER** được gọi endpoint này.
+
+                        **Thuật toán:**
+                        1. Tính H3 cell (resolution=9) của điểm đón.
+                        2. `gridDisk(k)` → tập các ô lân cận (k=2 → 19 ô, bán kính ~350m).
+                        3. `SUNION` Redis: lấy tất cả `driverId` đang online trong vùng đó.
+                        4. Tính khoảng cách Haversine → sort tăng dần → trả top `limit` driver.
+
+                        **Query params:**
+                        - `lat`, `lng`: tọa độ điểm đón (bắt buộc).
+                        - `k`: bán kính k-ring (mặc định 2, tối đa 5).
+                        - `limit`: số driver tối đa (mặc định 5, tối đa 20).
+
+                        **Toàn bộ dữ liệu đọc từ Redis** → latency < 5ms.
+                        """)
+        @ApiResponses({
+                        @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "200", description = "Trả về danh sách driver gần nhất (có thể rỗng)"),
+                        @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "400", description = "Tọa độ không hợp lệ hoặc k/limit vượt giới hạn"),
+                        @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "403", description = "Tài khoản không phải CUSTOMER")
+        })
+        @PreAuthorize("hasRole('CUSTOMER')")
+        @GetMapping("/nearby")
+        public ResponseEntity<ApiResponse<java.util.List<org.example.steelbikerunbackend.module.driver.dto.NearbyDriverResponse>>> findNearbyDrivers(
+                        @io.swagger.v3.oas.annotations.Parameter(description = "Vĩ độ điểm đón", example = "10.7769", required = true)
+                        @RequestParam double lat,
+
+                        @io.swagger.v3.oas.annotations.Parameter(description = "Kinh độ điểm đón", example = "106.7009", required = true)
+                        @RequestParam double lng,
+
+                        @io.swagger.v3.oas.annotations.Parameter(description = "Bán kính k-ring H3 (1–5), mặc định 2", example = "2")
+                        @RequestParam(defaultValue = "2") int k,
+
+                        @io.swagger.v3.oas.annotations.Parameter(description = "Số driver tối đa trả về (1–20), mặc định 5", example = "5")
+                        @RequestParam(defaultValue = "5") int limit) {
+
+                // Validate tham số đầu vào
+                if (lat < -90 || lat > 90 || lng < -180 || lng > 180) {
+                        return ResponseEntity.badRequest()
+                                        .body(ApiResponse.error("Tọa độ lat/lng không hợp lệ"));
+                }
+                if (k < 1 || k > 5) {
+                        return ResponseEntity.badRequest()
+                                        .body(ApiResponse.error("Tham số k phải nằm trong [1, 5]"));
+                }
+                if (limit < 1 || limit > 20) {
+                        return ResponseEntity.badRequest()
+                                        .body(ApiResponse.error("Tham số limit phải nằm trong [1, 20]"));
+                }
+
+                var drivers = driverLocationService.findNearbyDrivers(lat, lng, k, limit);
+
+                String message = drivers.isEmpty()
+                                ? "Không có tài xế nào trong khu vực này. Hãy thử mở rộng vùng tìm kiếm."
+                                : "Tìm thấy " + drivers.size() + " tài xế gần nhất.";
+
+                return ResponseEntity.ok(ApiResponse.success(message, drivers));
         }
 }

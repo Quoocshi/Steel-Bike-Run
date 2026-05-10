@@ -25,7 +25,7 @@ public class UserProfileCacheRepository {
     private static final String KEY_PREFIX = "user:profile:";
     private static final Duration TTL = Duration.ofMinutes(10);
 
-    // ─── Read ──────────────────────────────────────────────
+    // --- Read ----------------------------------------------
     public Optional<UserProfileResponse> get(String email) {
         String key = buildKey(email);
         try {
@@ -41,7 +41,7 @@ public class UserProfileCacheRepository {
         return Optional.empty();
     }
 
-    // ─── Write ─────────────────────────────────────────────
+    // --- Write ---------------------------------------------
     public void put(String email, UserProfileResponse profile) {
         String key = buildKey(email);
         try {
@@ -52,7 +52,7 @@ public class UserProfileCacheRepository {
         }
     }
 
-    // ─── Evict ─────────────────────────────────────────────
+    // --- Evict ---------------------------------------------
     public void evict(String email) {
         String key = buildKey(email);
         try {
@@ -63,7 +63,7 @@ public class UserProfileCacheRepository {
         }
     }
 
-    // ───────────────────────────────────────────────────────
+    // -------------------------------------------------------
     private String buildKey(String email) {
         return KEY_PREFIX + email;
     }

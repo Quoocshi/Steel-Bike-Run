@@ -6,6 +6,8 @@ import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
 
+import java.util.Collection;
+import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 
@@ -22,4 +24,9 @@ public interface DriverRepository extends JpaRepository<Driver, UUID> {
 
     @Query("SELECT d FROM Driver d JOIN FETCH d.user WHERE d.user.id = :userId")
     Optional<Driver> findByUserIdWithUser(@Param("userId") UUID userId);
+
+    // Batch load nhiều driver cùng lúc, JOIN FETCH để tránh N+1 với User.
+    // Dùng sau SUNION Redis trong k-ring search — 1 query duy nhất thay vì N queries.
+    @Query("SELECT d FROM Driver d JOIN FETCH d.user WHERE d.id IN :ids")
+    List<Driver> findAllByIdInWithUser(@Param("ids") Collection<UUID> ids);
 }
