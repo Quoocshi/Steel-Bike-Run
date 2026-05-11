@@ -123,8 +123,8 @@ class FaceAnalyzer(
             val rightEarLandmark = face.getLandmark(FaceLandmark.RIGHT_EAR)?.position
 
             if (leftEye != null && rightEye != null) {
-                val leftEarVal = EarCalculator.estimateEar(leftEye, leftEar, leftCheek, noseBase)
-                val rightEarVal = EarCalculator.estimateEar(rightEye, rightEarLandmark, rightCheek, noseBase)
+                val leftEarVal = EarCalculator.estimateEar(leftEye.toPoint(), leftEar?.toPoint(), leftCheek?.toPoint(), noseBase?.toPoint())
+                val rightEarVal = EarCalculator.estimateEar(rightEye.toPoint(), rightEarLandmark?.toPoint(), rightCheek?.toPoint(), noseBase?.toPoint())
 
                 val isBlinking = EarCalculator.isBlinking(leftEarVal, rightEarVal)
 
@@ -187,3 +187,5 @@ sealed interface FaceAnalysisResult {
     /** Lỗi trong quá trình phân tích */
     data class Error(val message: String) : FaceAnalysisResult
 }
+
+private fun android.graphics.PointF.toPoint() = EarCalculator.Point(x, y)
