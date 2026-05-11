@@ -42,13 +42,13 @@ android {
 
     buildTypes {
         debug {
-            val baseUrl = localProps.getProperty("LOCAL_BASE_URL", "http://10.0.2.2:8081/")
+            val baseUrl = localProps.getProperty("LOCAL_BASE_URL", "https://steel-bike-run-e6eccka4facfaag3.malaysiawest-01.azurewebsites.net/")
             buildConfigField("String", "BASE_URL", "\"$baseUrl\"")
             buildConfigField("String", "WS_URL", "\"${baseUrl.toWebSocketUrl()}ws\"")
         }
         release {
-            buildConfigField("String", "BASE_URL", "\"https://api.steelbike.example/\"")
-            buildConfigField("String", "WS_URL", "\"wss://api.steelbike.example/ws\"")
+            buildConfigField("String", "BASE_URL", "\"https://steel-bike-run-e6eccka4facfaag3.malaysiawest-01.azurewebsites.net/\"")
+            buildConfigField("String", "WS_URL", "\"wss://steel-bike-run-e6eccka4facfaag3.malaysiawest-01.azurewebsites.net/ws\"")
             isMinifyEnabled = false
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),
