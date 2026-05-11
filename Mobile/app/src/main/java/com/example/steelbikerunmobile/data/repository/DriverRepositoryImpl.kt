@@ -9,7 +9,7 @@ import com.example.steelbikerunmobile.data.remote.dto.LocationUpdateRequestDto
 import com.example.steelbikerunmobile.data.remote.dto.NearbyDriverDto
 import com.example.steelbikerunmobile.data.remote.dto.SwitchDriverRequestDto
 import com.example.steelbikerunmobile.data.remote.dto.SwitchRoleResponseDto
-import com.example.steelbikerunmobile.data.remote.websocket.WebSocketManager
+import com.example.steelbikerunmobile.data.remote.websocket.StompWebSocketManager
 import com.example.steelbikerunmobile.domain.model.DriverProfile
 import com.example.steelbikerunmobile.domain.model.LatLng
 import com.example.steelbikerunmobile.domain.model.LocationHeartbeat
@@ -27,7 +27,7 @@ class DriverRepositoryImpl @Inject constructor(
     private val driverApiService: DriverApiService,
     private val authRepository: AuthRepository,
     private val locationStreamProvider: LocationStreamProvider,
-    private val webSocketManager: WebSocketManager
+    private val stompWebSocketManager: StompWebSocketManager
 ) : DriverRepository {
 
     // H3 cell index tính bởi server sau mỗi heartbeat thành công.
@@ -121,7 +121,7 @@ class DriverRepositoryImpl @Inject constructor(
     }
 
     override fun stopRealtime() {
-        webSocketManager.disconnect()
+        stompWebSocketManager.disconnect()
         _currentH3Index.value = null
     }
 

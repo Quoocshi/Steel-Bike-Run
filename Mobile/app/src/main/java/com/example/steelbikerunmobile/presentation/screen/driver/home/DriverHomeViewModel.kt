@@ -1,5 +1,6 @@
 package com.example.steelbikerunmobile.presentation.screen.driver.home
 
+import android.util.Log
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.steelbikerunmobile.data.repository.DemoMapData
@@ -8,6 +9,7 @@ import com.example.steelbikerunmobile.domain.model.LatLng
 import com.example.steelbikerunmobile.domain.model.NearbyDriver
 import com.example.steelbikerunmobile.domain.model.SurgeZone
 import com.example.steelbikerunmobile.domain.model.VehicleInfo
+import com.example.steelbikerunmobile.domain.repository.TripRepository
 import com.example.steelbikerunmobile.domain.usecase.driver.GetDriverProfileUseCase
 import com.example.steelbikerunmobile.domain.usecase.driver.GetNearbyDriversUseCase
 import com.example.steelbikerunmobile.domain.usecase.driver.ObserveCurrentH3IndexUseCase
@@ -15,6 +17,7 @@ import com.example.steelbikerunmobile.domain.usecase.driver.SetDriverOnlineStatu
 import com.example.steelbikerunmobile.domain.usecase.driver.StreamLocationUseCase
 import com.example.steelbikerunmobile.domain.usecase.driver.SwitchToCustomerUseCase
 import com.example.steelbikerunmobile.domain.usecase.driver.SwitchToDriverUseCase
+import com.example.steelbikerunmobile.domain.usecase.trip.ObserveDriverTripRequestsUseCase
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
@@ -105,12 +108,15 @@ class DriverHomeViewModel @Inject constructor(
     private val streamLocationUseCase: StreamLocationUseCase,
     private val getNearbyDriversUseCase: GetNearbyDriversUseCase,
     private val observeCurrentH3IndexUseCase: ObserveCurrentH3IndexUseCase,
+    private val observeDriverTripRequestsUseCase: ObserveDriverTripRequestsUseCase,
+    private val tripRepository: TripRepository,
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(DriverHomeUiState())
     val uiState: StateFlow<DriverHomeUiState> = _uiState.asStateFlow()
     private var locationJob: Job? = null
     private var h3IndexJob: Job? = null
+    private var tripListenerJob: Job? = null
 
     init {
         loadProfile()
@@ -152,14 +158,8 @@ class DriverHomeViewModel @Inject constructor(
     fun onFaceScanPassed(hasLocationPermission: Boolean) {
         _uiState.update { it.copy(step = DriverHomeStep.HOME) }
         executeToggleOnline(hasLocationPermission)
-        viewModelScope.launch {
-            delay(6_000L)
-            if (_uiState.value.profile?.isOnline == true) {
-                _uiState.update {
-                    it.copy(incomingTrip = IncomingTripData(), step = DriverHomeStep.INCOMING_TRIP)
-                }
-            }
-        }
+        // Subscribe WebSocket để lắng nghe cuốc xe mới khi online
+        startListeningForTrips()
     }
 
     fun onFaceScanFailed() {
@@ -168,59 +168,93 @@ class DriverHomeViewModel @Inject constructor(
 
     // ── Incoming trip ─────────────────────────────────────────────────────────
 
-    /** Driver accepts the incoming trip → move to TRIP_IN_PROGRESS. */
+    /** Driver accepts the incoming trip → call backend API + move to TRIP_IN_PROGRESS. */
     fun onTripAccepted() {
         val incoming = _uiState.value.incomingTrip ?: return
-        val active = ActiveTripData(
-            tripId = incoming.tripId,
-            pickupAddress = incoming.pickupAddress,
-            destinationAddress = incoming.destinationAddress,
-            estimatedEarnings = incoming.estimatedEarnings,
-            surgeMultiplier = incoming.surgeMultiplier,
-            durationMinutes = incoming.durationMinutes,
-            totalDistanceKm = incoming.totalDistanceKm,
-        )
-        _uiState.update {
-            it.copy(
-                step = DriverHomeStep.TRIP_IN_PROGRESS,
-                incomingTrip = null,
-                activeTrip = active,
-                todayTrips = it.todayTrips + 1,
-                infoMessage = null,
+        viewModelScope.launch {
+            _uiState.update { it.copy(isLoading = true) }
+            tripRepository.acceptTrip(incoming.tripId).fold(
+                onSuccess = {
+                    val active = ActiveTripData(
+                        tripId = incoming.tripId,
+                        pickupAddress = incoming.pickupAddress,
+                        destinationAddress = incoming.destinationAddress,
+                        estimatedEarnings = incoming.estimatedEarnings,
+                        surgeMultiplier = incoming.surgeMultiplier,
+                        durationMinutes = incoming.durationMinutes,
+                        totalDistanceKm = incoming.totalDistanceKm,
+                    )
+                    _uiState.update {
+                        it.copy(
+                            step = DriverHomeStep.TRIP_IN_PROGRESS,
+                            incomingTrip = null,
+                            activeTrip = active,
+                            todayTrips = it.todayTrips + 1,
+                            isLoading = false,
+                            infoMessage = null,
+                        )
+                    }
+                },
+                onFailure = { t ->
+                    _uiState.update {
+                        it.copy(
+                            step = DriverHomeStep.HOME,
+                            incomingTrip = null,
+                            isLoading = false,
+                            errorMessage = t.message ?: "Cuốc xe đã được nhận bởi tài xế khác",
+                        )
+                    }
+                    // Continue listening for next trip
+                    startListeningForTrips()
+                }
             )
         }
     }
 
     fun onTripDeclined() {
         _uiState.update { it.copy(step = DriverHomeStep.HOME, incomingTrip = null) }
+        // Continue listening for next trip
+        startListeningForTrips()
     }
 
     // ── Trip in progress ──────────────────────────────────────────────────────
 
-    /** Driver swipes to complete the active trip. */
+    /** Driver swipes to complete the active trip → call backend API. */
     fun onSwipeToComplete() {
         val active = _uiState.value.activeTrip ?: return
-        val summary = TripSummary(
-            earnings = active.estimatedEarnings,
-            distanceKm = active.totalDistanceKm,
-            durationMinutes = active.durationMinutes,
-            surgeMultiplier = active.surgeMultiplier,
-        )
-        _uiState.update {
-            it.copy(
-                step = DriverHomeStep.TRIP_SUMMARY,
-                activeTrip = null,
-                tripSummary = summary,
-                todayEarnings = it.todayEarnings + active.estimatedEarnings,
+        viewModelScope.launch {
+            _uiState.update { it.copy(isLoading = true) }
+            tripRepository.completeTrip(active.tripId).fold(
+                onSuccess = {
+                    val summary = TripSummary(
+                        earnings = active.estimatedEarnings,
+                        distanceKm = active.totalDistanceKm,
+                        durationMinutes = active.durationMinutes,
+                        surgeMultiplier = active.surgeMultiplier,
+                    )
+                    _uiState.update {
+                        it.copy(
+                            step = DriverHomeStep.TRIP_SUMMARY,
+                            activeTrip = null,
+                            tripSummary = summary,
+                            todayEarnings = it.todayEarnings + active.estimatedEarnings,
+                            isLoading = false,
+                        )
+                    }
+                },
+                onFailure = { t ->
+                    _uiState.update { it.copy(isLoading = false, errorMessage = t.message ?: "Không thể hoàn thành cuốc xe") }
+                }
             )
         }
     }
 
-    /** Dismiss summary → return to HOME (still online). */
+    /** Dismiss summary → return to HOME (still online), resume listening. */
     fun onSummaryDismissed() {
         _uiState.update {
             it.copy(step = DriverHomeStep.HOME, tripSummary = null, infoMessage = "Sẵn sàng nhận cuốc tiếp theo!")
         }
+        startListeningForTrips()
     }
 
     // ── Location streaming ────────────────────────────────────────────────────
@@ -368,6 +402,47 @@ class DriverHomeViewModel @Inject constructor(
         }
     }
 
+    // -- WebSocket trip listener --
+
+    /**
+     * Subscribe vào WebSocket để lắng nghe cuốc xe mới từ Matching Engine.
+     * Gọi khi driver bật Online hoặc sau khi hoàn thành/từ chối cuốc trước đó.
+     */
+    private fun startListeningForTrips() {
+        tripListenerJob?.cancel()
+        val driverId = _uiState.value.profile?.driverId ?: return
+        tripListenerJob = viewModelScope.launch {
+            observeDriverTripRequestsUseCase.subscribe(driverId)
+            observeDriverTripRequestsUseCase.tripRequests().collect { request ->
+                _uiState.update {
+                    it.copy(
+                        incomingTrip = IncomingTripData(
+                            tripId = request.tripId,
+                            pickupAddress = "${String.format("%.4f", request.pickupLat)}, ${String.format("%.4f", request.pickupLng)}",
+                            destinationAddress = request.destAddress.ifBlank { "\u0110i\u1ec3m \u0111\u1ebfn" },
+                            pickupLat = request.pickupLat,
+                            pickupLng = request.pickupLng,
+                            distanceToPickupKm = request.distanceToPickupKm,
+                            totalDistanceKm = request.distanceToPickupKm * 3,
+                            estimatedEarnings = request.finalPrice,
+                            surgeMultiplier = request.surgeMultiplier,
+                            durationMinutes = ((request.distanceToPickupKm * 3) / 25.0 * 60).toInt().coerceAtLeast(5),
+                            countdownSeconds = request.timeoutSeconds,
+                        ),
+                        step = DriverHomeStep.INCOMING_TRIP,
+                    )
+                }
+                return@collect  // Nhận 1 cuốc, chờ driver xử lý
+            }
+        }
+    }
+
+    private fun stopListeningForTrips() {
+        tripListenerJob?.cancel()
+        tripListenerJob = null
+        observeDriverTripRequestsUseCase.unsubscribe()
+    }
+
     private fun DriverHomeUiState.toVehicleInfoOrNull(): VehicleInfo? {
         if (vehiclePlate.isBlank() || vehicleModel.isBlank() || vehicleColor.isBlank() || licenseNumber.length != 12) return null
         return VehicleInfo(vehiclePlate.trim(), vehicleModel.trim(), vehicleColor.trim(), licenseNumber.trim())
@@ -375,6 +450,7 @@ class DriverHomeViewModel @Inject constructor(
 
     override fun onCleared() {
         stopLocationStream()
+        stopListeningForTrips()
         h3IndexJob?.cancel()
         super.onCleared()
     }

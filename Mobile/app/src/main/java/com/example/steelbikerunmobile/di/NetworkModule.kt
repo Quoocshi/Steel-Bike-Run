@@ -5,6 +5,7 @@ import com.example.steelbikerunmobile.data.remote.AuthTokenInterceptor
 import com.example.steelbikerunmobile.data.remote.api.AuthApiService
 import com.example.steelbikerunmobile.data.remote.api.DriverApiService
 import com.example.steelbikerunmobile.data.remote.api.TripApiService
+import com.google.gson.Gson
 import dagger.Module
 import dagger.Provides
 import dagger.hilt.InstallIn
@@ -58,4 +59,8 @@ object NetworkModule {
     fun provideTripApiService(retrofit: Retrofit): TripApiService {
         return retrofit.create(TripApiService::class.java)
     }
+
+    @Provides
+    @Singleton
+    fun provideGson(): Gson = Gson()
 }
