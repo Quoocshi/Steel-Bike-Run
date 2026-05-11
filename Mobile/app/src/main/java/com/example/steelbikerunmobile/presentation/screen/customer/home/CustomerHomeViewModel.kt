@@ -14,6 +14,7 @@ import com.example.steelbikerunmobile.domain.usecase.driver.SwitchToDriverUseCas
 import retrofit2.HttpException
 import com.example.steelbikerunmobile.domain.usecase.trip.CreateTripUseCase
 import com.example.steelbikerunmobile.domain.usecase.trip.GetPriceEstimateUseCase
+import com.example.steelbikerunmobile.domain.usecase.trip.ObserveTripUpdatesUseCase
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
@@ -119,6 +120,7 @@ class CustomerHomeViewModel @Inject constructor(
     private val getPriceEstimateUseCase: GetPriceEstimateUseCase,
     private val createTripUseCase: CreateTripUseCase,
     private val switchToDriverUseCase: SwitchToDriverUseCase,
+    private val observeTripUpdatesUseCase: ObserveTripUpdatesUseCase,
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(CustomerHomeUiState())
@@ -126,6 +128,8 @@ class CustomerHomeViewModel @Inject constructor(
 
     private var trackingJob: Job? = null
     private var tripProgressJob: Job? = null
+    private var wsListenerJob: Job? = null
+    private var currentTripId: String? = null
 
     init { refreshNearbyDrivers() }
 
@@ -159,8 +163,16 @@ class CustomerHomeViewModel @Inject constructor(
         viewModelScope.launch {
             _uiState.update { it.copy(isLoading = true, flowStep = CustomerFlowStep.FINDING_DRIVER, tripStatus = TripStatus.REQUESTED) }
             createTripUseCase(BookingDraft(current.pickup, destination, current.destinationAddress))
-            _uiState.update { it.copy(isLoading = false) }
-            startMatchingMock()
+                .fold(
+                    onSuccess = { tripId ->
+                        currentTripId = tripId
+                        _uiState.update { it.copy(isLoading = false) }
+                        startWebSocketMatching()
+                    },
+                    onFailure = {
+                        _uiState.update { it.copy(isLoading = false, flowStep = CustomerFlowStep.TRIP_PREVIEW) }
+                    }
+                )
         }
     }
 
@@ -168,6 +180,9 @@ class CustomerHomeViewModel @Inject constructor(
 
     fun onCancelFinding() {
         trackingJob?.cancel()
+        wsListenerJob?.cancel()
+        observeTripUpdatesUseCase.unsubscribe()
+        currentTripId = null
         resetToHome()
     }
 
@@ -184,11 +199,21 @@ class CustomerHomeViewModel @Inject constructor(
                 tripStatusMessage = "Chuyến đi đang diễn ra...",
             )
         }
-        // Mock: trip ends after 10 s
+        // Listen for trip completion via WebSocket status messages
         tripProgressJob?.cancel()
         tripProgressJob = viewModelScope.launch {
-            delay(10_000L)
-            onTripCompleted()
+            observeTripUpdatesUseCase.tripStatusMessages().collect { statusData ->
+                when (statusData.status) {
+                    "COMPLETED" -> {
+                        onTripCompleted()
+                        return@collect
+                    }
+                    "CANCELLED" -> {
+                        resetToHome()
+                        return@collect
+                    }
+                }
+            }
         }
     }
 
@@ -256,61 +281,58 @@ class CustomerHomeViewModel @Inject constructor(
         }
     }
 
-    private fun startMatchingMock() {
-        viewModelScope.launch {
-            delay(4_000L)
-            mockDriverFound()
-        }
-    }
+    /**
+     * Subscribe vào WebSocket và lắng nghe DriverFound message từ Matching Engine.
+     * Khi backend tìm thấy tài xế và tài xế accept, server gửi DriverFoundMessage
+     * đến /topic/trip/{customerId}.
+     */
+    private fun startWebSocketMatching() {
+        wsListenerJob?.cancel()
+        wsListenerJob = viewModelScope.launch {
+            // Subscribe vào kênh trip updates (dùng tripId làm customer channel)
+            val tripId = currentTripId ?: return@launch
+            observeTripUpdatesUseCase.subscribe(tripId)
 
-    private fun mockDriverFound() {
-        val pickup = _uiState.value.pickup
-        val mockStart = LatLng(pickup.latitude + 0.0030, pickup.longitude + 0.0025)
-        val mockDriver = DemoMapData.drivers.first()
-        _uiState.update {
-            it.copy(
-                flowStep = CustomerFlowStep.TRACKING,
-                tripStatus = TripStatus.ACCEPTED,
-                trackedDriver = TrackedDriverInfo(
-                    name = mockDriver.fullName,
-                    plate = mockDriver.vehiclePlate ?: "51G-001.23",
-                    rating = mockDriver.rating,
-                    vehicleModel = "Honda Air Blade 150",
-                    vehicleColor = "Đen",
-                ),
-                trackedDriverLocation = mockStart,
-                tripStatusMessage = "Tài xế đang đến điểm đón",
-            )
-        }
-        startDriverTracking(mockStart)
-    }
-
-    private fun startDriverTracking(startLocation: LatLng) {
-        trackingJob?.cancel()
-        trackingJob = viewModelScope.launch {
-            val pickup = _uiState.value.pickup
-            var current = startLocation
-            repeat(30) {
-                delay(2_000L)
-                current = LatLng(
-                    latitude = current.latitude + (pickup.latitude - current.latitude) * 0.14,
-                    longitude = current.longitude + (pickup.longitude - current.longitude) * 0.14,
-                )
-                val distanceM = haversineMeters(current, pickup)
+            // Lắng nghe DriverFound message
+            observeTripUpdatesUseCase.driverFoundMessages().collect { driver ->
                 _uiState.update {
                     it.copy(
-                        trackedDriverLocation = current,
-                        tripStatusMessage = when {
-                            distanceM < 25 -> "Tài xế đã đến nơi! 🎉"
-                            distanceM < 120 -> "Tài xế sắp đến..."
-                            else -> "Tài xế đang đến điểm đón"
-                        },
+                        flowStep = CustomerFlowStep.TRACKING,
+                        tripStatus = TripStatus.ACCEPTED,
+                        trackedDriver = TrackedDriverInfo(
+                            name = driver.driverName,
+                            plate = driver.vehiclePlate.ifBlank { "--" },
+                            rating = driver.driverRating,
+                            vehicleModel = driver.vehicleModel.ifBlank { "Xe máy" },
+                            vehicleColor = driver.vehicleColor.ifBlank { "--" },
+                        ),
+                        tripStatusMessage = "Tài xế đang đến điểm đón (${driver.etaMinutes} phút)",
                     )
                 }
-                if (distanceM < 25) {
-                    delay(2_500L) // Show "arrived" for 2.5s then start trip
-                    onTripStarted()
-                    return@launch
+                // Start listening for status changes
+                startTripStatusListener()
+                return@collect  // Chỉ cần nhận 1 lần
+            }
+        }
+    }
+
+    /**
+     * Lắng nghe trip status changes sau khi driver đã accept.
+     * IN_PROGRESS -> driver đã đón khách, bắt đầu chuyến đi
+     * COMPLETED -> chuyến đi hoàn thành
+     */
+    private fun startTripStatusListener() {
+        trackingJob?.cancel()
+        trackingJob = viewModelScope.launch {
+            observeTripUpdatesUseCase.tripStatusMessages().collect { statusData ->
+                when (statusData.status) {
+                    "IN_PROGRESS" -> onTripStarted()
+                    "COMPLETED" -> onTripCompleted()
+                    "CANCELLED" -> {
+                        wsListenerJob?.cancel()
+                        observeTripUpdatesUseCase.unsubscribe()
+                        resetToHome()
+                    }
                 }
             }
         }
@@ -484,6 +506,8 @@ class CustomerHomeViewModel @Inject constructor(
     override fun onCleared() {
         trackingJob?.cancel()
         tripProgressJob?.cancel()
+        wsListenerJob?.cancel()
+        observeTripUpdatesUseCase.unsubscribe()
         super.onCleared()
     }
 }

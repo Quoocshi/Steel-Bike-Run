@@ -26,9 +26,9 @@ class TripRepositoryImpl @Inject constructor(
                 ?: error(envelope.message?.takeIf { it.isNotBlank() } ?: "Không thể tính giá")
         }.recover { estimateLocally(draft) }
 
-    override suspend fun createTrip(draft: BookingDraft): Result<Unit> =
+    override suspend fun createTrip(draft: BookingDraft): Result<String> =
         NetworkErrorMapper.safeCall {
-            tripApiService.createTrip(
+            val envelope = tripApiService.createTrip(
                 CreateTripRequestDto(
                     pickupLat = draft.pickup.latitude,
                     pickupLng = draft.pickup.longitude,
@@ -37,6 +37,30 @@ class TripRepositoryImpl @Inject constructor(
                     destAddress = draft.destinationAddress
                 )
             )
+            envelope.data?.id ?: error(envelope.message ?: "Không thể đặt xe")
+        }
+
+    override suspend fun acceptTrip(tripId: String): Result<Unit> =
+        NetworkErrorMapper.safeCall {
+            tripApiService.acceptTrip(tripId)
+            Unit
+        }
+
+    override suspend fun startTrip(tripId: String): Result<Unit> =
+        NetworkErrorMapper.safeCall {
+            tripApiService.startTrip(tripId)
+            Unit
+        }
+
+    override suspend fun completeTrip(tripId: String): Result<Unit> =
+        NetworkErrorMapper.safeCall {
+            tripApiService.completeTrip(tripId)
+            Unit
+        }
+
+    override suspend fun cancelTrip(tripId: String): Result<Unit> =
+        NetworkErrorMapper.safeCall {
+            tripApiService.cancelTrip(tripId)
             Unit
         }
 
