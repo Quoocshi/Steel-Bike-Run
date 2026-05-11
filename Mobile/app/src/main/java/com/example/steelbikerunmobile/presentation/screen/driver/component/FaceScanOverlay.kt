@@ -5,6 +5,7 @@ import android.content.pm.PackageManager
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.camera.core.CameraSelector
+import androidx.camera.core.ImageAnalysis
 import androidx.camera.core.Preview
 import androidx.camera.lifecycle.ProcessCameraProvider
 import androidx.camera.view.PreviewView
@@ -38,8 +39,10 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -60,20 +63,22 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.compose.LocalLifecycleOwner
+import com.example.steelbikerunmobile.data.ml.FaceAnalysisResult
+import com.example.steelbikerunmobile.data.ml.FaceAnalyzer
 import kotlinx.coroutines.delay
+import java.util.concurrent.Executors
 
-// ── Face-scan state machine ───────────────────────────────────────────────────
+// -- Face-scan state machine --
 private enum class FaceScanState {
     IDLE, SCANNING, BLINK_PROMPT, PASSED, FAILED
 }
 
 private val NeonGreen = Color(0xFF00FF88)
-private val NeonGreenDim = Color(0xFF00FF88).copy(alpha = 0.35f)
 private val ScanBlue = Color(0xFF4FC3F7)
 private val FailRed = Color(0xFFEF5350)
-private val BackgroundDark = Color(0xE6050A0E)     // ~90 % opaque near-black
+private val BackgroundDark = Color(0xE6050A0E)
 
-// ── Main composable ───────────────────────────────────────────────────────────
+// -- Main composable --
 @Composable
 fun FaceScanOverlay(
     onPass: () -> Unit,
@@ -92,17 +97,103 @@ fun FaceScanOverlay(
     ) { granted -> hasCameraPermission = granted }
 
     var scanState by remember { mutableStateOf(FaceScanState.IDLE) }
+    var blinkCount by remember { mutableIntStateOf(0) }
+    var statusText by remember { mutableStateOf("Đang khởi động camera...") }
+    var faceDetected by remember { mutableStateOf(false) }
 
-    // Auto-advance the mock scan sequence
+    // ML Kit FaceAnalyzer instance
+    val faceAnalyzer = remember {
+        FaceAnalyzer { result ->
+            when (result) {
+                is FaceAnalysisResult.NoFace -> {
+                    faceDetected = false
+                    if (scanState == FaceScanState.SCANNING || scanState == FaceScanState.BLINK_PROMPT) {
+                        statusText = "Không nhận diện được khuôn mặt"
+                    }
+                }
+                is FaceAnalysisResult.Detected -> {
+                    faceDetected = true
+                    blinkCount = result.blinkCount
+
+                    when (scanState) {
+                        FaceScanState.SCANNING -> {
+                            // Khuôn mặt phát hiện + mắt mở -> chuyển sang yêu cầu chớp mắt
+                            if (!result.isBlinking && result.leftEar > 0.3f) {
+                                statusText = "Khuôn mặt OK! Đang kiểm tra..."
+                            }
+                        }
+                        FaceScanState.BLINK_PROMPT -> {
+                            statusText = "Vui lòng chớp mắt (${result.blinkCount} lần)"
+                            if (result.isDrowsy) {
+                                scanState = FaceScanState.FAILED
+                                statusText = "Phát hiện mệt mỏi. Hãy nghỉ ngơi."
+                            }
+                        }
+                        else -> { /* no-op */ }
+                    }
+                }
+                is FaceAnalysisResult.Error -> {
+                    statusText = "Lỗi: ${result.message}"
+                }
+            }
+        }
+    }
+
+    // Cleanup ML Kit detector
+    DisposableEffect(Unit) {
+        onDispose { faceAnalyzer.close() }
+    }
+
+    // Face scan state machine flow
     LaunchedEffect(hasCameraPermission) {
         if (!hasCameraPermission) return@LaunchedEffect
         scanState = FaceScanState.SCANNING
-        delay(2_200L)
+        statusText = "Đang kiểm tra khuôn mặt..."
+
+        // Chờ phát hiện khuôn mặt (tối đa 5 giây)
+        var waited = 0
+        while (!faceDetected && waited < 50) {
+            delay(100L)
+            waited++
+        }
+        if (!faceDetected) {
+            scanState = FaceScanState.FAILED
+            statusText = "Không tìm thấy khuôn mặt. Hãy thử lại."
+            delay(2_000L)
+            onFail()
+            return@LaunchedEffect
+        }
+
+        // Chuyển sang bước yêu cầu chớp mắt
+        delay(1_500L)
         scanState = FaceScanState.BLINK_PROMPT
-        delay(2_000L)
-        scanState = FaceScanState.PASSED
-        delay(1_400L)
-        onPass()
+        statusText = "Vui lòng chớp mắt"
+        val startBlinkCount = blinkCount
+
+        // Chờ ít nhất 1 blink mới (tối đa 5 giây)
+        waited = 0
+        while (blinkCount <= startBlinkCount && waited < 50) {
+            delay(100L)
+            waited++
+            // Kiểm tra nếu bị phát hiện buồn ngủ
+            if (scanState == FaceScanState.FAILED) {
+                delay(2_000L)
+                onFail()
+                return@LaunchedEffect
+            }
+        }
+
+        if (blinkCount > startBlinkCount) {
+            scanState = FaceScanState.PASSED
+            statusText = "Tỉnh táo – Sẵn sàng nhận cuốc!"
+            delay(1_400L)
+            onPass()
+        } else {
+            scanState = FaceScanState.FAILED
+            statusText = "Không phát hiện chớp mắt. Hãy thử lại."
+            delay(2_000L)
+            onFail()
+        }
     }
 
     LaunchedEffect(Unit) {
@@ -115,7 +206,7 @@ fun FaceScanOverlay(
             .background(BackgroundDark),
         contentAlignment = Alignment.Center
     ) {
-        // ── Dot-grid background pattern ───────────────────────────────────────
+        // Dot-grid background pattern
         Canvas(modifier = Modifier.fillMaxSize()) {
             val dotColor = Color.White.copy(alpha = 0.04f)
             val spacing = 28.dp.toPx()
@@ -134,7 +225,7 @@ fun FaceScanOverlay(
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.Center
         ) {
-            // ── Title ─────────────────────────────────────────────────────────
+            // Title
             Text(
                 text = "XÁC MINH TÀI XẾ",
                 style = MaterialTheme.typography.labelLarge.copy(
@@ -144,31 +235,37 @@ fun FaceScanOverlay(
             )
             Spacer(Modifier.height(28.dp))
 
-            // ── Camera circle + scan ring ─────────────────────────────────────
+            // Camera circle + scan ring with ML Kit analysis
             CircularCameraFrame(
                 scanState = scanState,
                 hasCameraPermission = hasCameraPermission,
-                lifecycleOwner = lifecycleOwner
+                lifecycleOwner = lifecycleOwner,
+                faceAnalyzer = faceAnalyzer
             )
 
             Spacer(Modifier.height(32.dp))
 
-            // ── Status text ───────────────────────────────────────────────────
+            // Status text
             AnimatedContent(
                 targetState = scanState,
                 transitionSpec = { fadeIn(tween(300)) togetherWith fadeOut(tween(300)) },
                 label = "scanStatus"
             ) { state ->
-                val (label, color) = when (state) {
-                    FaceScanState.IDLE -> "Đang khởi động camera..." to Color.White.copy(alpha = 0.6f)
-                    FaceScanState.SCANNING -> "Đang kiểm tra..." to ScanBlue
-                    FaceScanState.BLINK_PROMPT -> "Vui lòng chớp mắt" to Color(0xFFFFA726)
-                    FaceScanState.PASSED -> "✓  Tỉnh táo – Sẵn sàng nhận cuốc!" to NeonGreen
-                    FaceScanState.FAILED -> "✗  Phát hiện mệt mỏi. Hãy nghỉ ngơi." to FailRed
+                val color = when (state) {
+                    FaceScanState.IDLE -> Color.White.copy(alpha = 0.6f)
+                    FaceScanState.SCANNING -> ScanBlue
+                    FaceScanState.BLINK_PROMPT -> Color(0xFFFFA726)
+                    FaceScanState.PASSED -> NeonGreen
+                    FaceScanState.FAILED -> FailRed
+                }
+                val icon = when (state) {
+                    FaceScanState.PASSED -> "✓  "
+                    FaceScanState.FAILED -> "✗  "
+                    else -> ""
                 }
                 Column(horizontalAlignment = Alignment.CenterHorizontally) {
                     Text(
-                        text = label,
+                        text = "$icon$statusText",
                         style = MaterialTheme.typography.titleMedium.copy(
                             fontWeight = FontWeight.SemiBold,
                             color = color
@@ -180,11 +277,11 @@ fun FaceScanOverlay(
 
             Spacer(Modifier.height(16.dp))
 
-            // ── Pulsing status LED ────────────────────────────────────────────
+            // Pulsing status LED
             StatusLed(scanState = scanState)
         }
 
-        // ── Close button ──────────────────────────────────────────────────────
+        // Close button
         IconButton(
             onClick = onFail,
             modifier = Modifier
@@ -196,17 +293,18 @@ fun FaceScanOverlay(
     }
 }
 
-// ── Circular camera frame with HUD rings ──────────────────────────────────────
+// -- Circular camera frame with ML Kit analysis --
 @Composable
 private fun CircularCameraFrame(
     scanState: FaceScanState,
     hasCameraPermission: Boolean,
-    lifecycleOwner: androidx.lifecycle.LifecycleOwner
+    lifecycleOwner: androidx.lifecycle.LifecycleOwner,
+    faceAnalyzer: FaceAnalyzer
 ) {
     val context = LocalContext.current
     val frameSize = 240.dp
+    val analysisExecutor = remember { Executors.newSingleThreadExecutor() }
 
-    // Infinite rotation for the two scan arcs (opposite directions)
     val infiniteTransition = rememberInfiniteTransition(label = "scan")
     val rotArc1 by infiniteTransition.animateFloat(
         initialValue = 0f, targetValue = 360f,
@@ -219,7 +317,6 @@ private fun CircularCameraFrame(
         label = "arc2"
     )
 
-    // Glow pulse for PASSED state
     val glowAlpha = remember { Animatable(0f) }
     LaunchedEffect(scanState) {
         if (scanState == FaceScanState.PASSED) {
@@ -253,7 +350,6 @@ private fun CircularCameraFrame(
             val topLeft = Offset(cx - outerR, cy - outerR)
             val arcSize = Size(outerR * 2, outerR * 2)
 
-            // Glow rings when PASSED
             if (scanState == FaceScanState.PASSED) {
                 for (i in 1..4) {
                     drawCircle(
@@ -264,14 +360,12 @@ private fun CircularCameraFrame(
                 }
             }
 
-            // Outer static ring
             drawCircle(
                 color = ringColor.copy(alpha = 0.30f),
                 radius = outerR,
                 style = Stroke(strokeW)
             )
 
-            // Rotating scan arc 1 (wide, bright)
             if (isScanning) {
                 rotate(degrees = rotArc1, pivot = Offset(cx, cy)) {
                     drawArc(
@@ -282,7 +376,6 @@ private fun CircularCameraFrame(
                         style = Stroke(strokeW + 1.dp.toPx(), cap = StrokeCap.Round)
                     )
                 }
-                // Counter-rotating arc 2 (narrower)
                 rotate(degrees = rotArc2, pivot = Offset(cx, cy)) {
                     drawArc(
                         color = ScanBlue.copy(alpha = 0.55f),
@@ -294,31 +387,26 @@ private fun CircularCameraFrame(
                 }
             }
 
-            // Solid ring (passed / failed)
             if (!isScanning) {
                 drawCircle(color = ringColor, radius = outerR, style = Stroke(strokeW + 1.dp.toPx()))
             }
 
-            // Corner HUD brackets (top-left, top-right, bottom-left, bottom-right)
+            // Corner HUD brackets
             val bracketLen = 20.dp.toPx()
             val bracketW = 4.dp.toPx()
             val bracketColor = ringColor.copy(alpha = 0.80f)
             val bR = innerR + 8.dp.toPx()
-            // TL
             drawLine(bracketColor, Offset(cx - bR, cy - bR), Offset(cx - bR + bracketLen, cy - bR), bracketW, StrokeCap.Round)
             drawLine(bracketColor, Offset(cx - bR, cy - bR), Offset(cx - bR, cy - bR + bracketLen), bracketW, StrokeCap.Round)
-            // TR
             drawLine(bracketColor, Offset(cx + bR, cy - bR), Offset(cx + bR - bracketLen, cy - bR), bracketW, StrokeCap.Round)
             drawLine(bracketColor, Offset(cx + bR, cy - bR), Offset(cx + bR, cy - bR + bracketLen), bracketW, StrokeCap.Round)
-            // BL
             drawLine(bracketColor, Offset(cx - bR, cy + bR), Offset(cx - bR + bracketLen, cy + bR), bracketW, StrokeCap.Round)
             drawLine(bracketColor, Offset(cx - bR, cy + bR), Offset(cx - bR, cy + bR - bracketLen), bracketW, StrokeCap.Round)
-            // BR
             drawLine(bracketColor, Offset(cx + bR, cy + bR), Offset(cx + bR - bracketLen, cy + bR), bracketW, StrokeCap.Round)
             drawLine(bracketColor, Offset(cx + bR, cy + bR), Offset(cx + bR, cy + bR - bracketLen), bracketW, StrokeCap.Round)
         }
 
-        // CameraX preview clipped to circle
+        // CameraX preview + ML Kit analysis
         if (hasCameraPermission) {
             AndroidView(
                 factory = { ctx ->
@@ -331,12 +419,19 @@ private fun CircularCameraFrame(
                             val preview = Preview.Builder().build().also {
                                 it.setSurfaceProvider(surfaceProvider)
                             }
+                            // ML Kit image analysis
+                            val imageAnalysis = ImageAnalysis.Builder()
+                                .setBackpressureStrategy(ImageAnalysis.STRATEGY_KEEP_ONLY_LATEST)
+                                .build()
+                                .also { it.setAnalyzer(analysisExecutor, faceAnalyzer) }
+
                             try {
                                 cameraProvider.unbindAll()
                                 cameraProvider.bindToLifecycle(
                                     lifecycleOwner,
                                     CameraSelector.DEFAULT_FRONT_CAMERA,
-                                    preview
+                                    preview,
+                                    imageAnalysis
                                 )
                             } catch (_: Exception) { }
                         }, ContextCompat.getMainExecutor(ctx))
@@ -347,7 +442,6 @@ private fun CircularCameraFrame(
                     .clip(CircleShape)
             )
         } else {
-            // Permission denied placeholder
             Box(
                 modifier = Modifier
                     .size(frameSize)
@@ -361,7 +455,7 @@ private fun CircularCameraFrame(
     }
 }
 
-// ── Pulsing status LED row ────────────────────────────────────────────────────
+// -- Pulsing status LED row --
 @Composable
 private fun StatusLed(scanState: FaceScanState) {
     val infiniteTransition = rememberInfiniteTransition(label = "led")
