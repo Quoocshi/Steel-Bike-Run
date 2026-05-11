@@ -22,6 +22,10 @@ public enum ErrorCode {
 
     // Trip
     TRIP_NOT_FOUND(404, "Trip not found", HttpStatus.NOT_FOUND),
+    INVALID_TRIP_STATUS(400, "Invalid trip status transition", HttpStatus.BAD_REQUEST),
+    TRIP_ALREADY_ACCEPTED(409, "Trip has already been accepted by another driver", HttpStatus.CONFLICT),
+    NO_DRIVERS_AVAILABLE(404, "No drivers available in the area", HttpStatus.NOT_FOUND),
+    DRIVER_NOT_AUTHORIZED(403, "Driver is not authorized for this trip", HttpStatus.FORBIDDEN),
     INVALID_COORDINATES(400, "Invalid coordinates: latitude must be in [-90, 90] and longitude in [-180, 180]",
             HttpStatus.BAD_REQUEST),
 
