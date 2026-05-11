@@ -17,6 +17,14 @@ public enum ErrorCode {
     // JWT
     TOKEN_INVALID(401, "Token is invalid or expired", HttpStatus.UNAUTHORIZED),
 
+    // Driver
+    DRIVER_NOT_FOUND(404, "Driver not found", HttpStatus.NOT_FOUND),
+
+    // Trip
+    TRIP_NOT_FOUND(404, "Trip not found", HttpStatus.NOT_FOUND),
+    INVALID_COORDINATES(400, "Invalid coordinates: latitude must be in [-90, 90] and longitude in [-180, 180]",
+            HttpStatus.BAD_REQUEST),
+
     // General
     BAD_REQUEST(400, "Bad request", HttpStatus.BAD_REQUEST),
     INTERNAL_ERROR(500, "Internal server error", HttpStatus.INTERNAL_SERVER_ERROR);
