@@ -69,7 +69,8 @@ class TripRepositoryImpl @Inject constructor(
             pickupLat = pickup.latitude,
             pickupLng = pickup.longitude,
             destLat = destination.latitude,
-            destLng = destination.longitude
+            destLng = destination.longitude,
+            destAddress = destinationAddress
         )
     }
 
