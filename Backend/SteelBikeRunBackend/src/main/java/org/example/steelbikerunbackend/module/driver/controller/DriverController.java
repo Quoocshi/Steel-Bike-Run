@@ -240,7 +240,7 @@ public class DriverController {
                         @RequestParam double lng,
 
                         @io.swagger.v3.oas.annotations.Parameter(description = "Bán kính k-ring H3 (1–5), mặc định 2", example = "2")
-                        @RequestParam(defaultValue = "2") int k,
+                        @RequestParam(defaultValue = "13") int k,
 
                         @io.swagger.v3.oas.annotations.Parameter(description = "Số driver tối đa trả về (1–20), mặc định 5", example = "5")
                         @RequestParam(defaultValue = "5") int limit) {
@@ -250,9 +250,9 @@ public class DriverController {
                         return ResponseEntity.badRequest()
                                         .body(ApiResponse.error("Tọa độ lat/lng không hợp lệ"));
                 }
-                if (k < 1 || k > 5) {
+                if (k < 1 || k > 15) {
                         return ResponseEntity.badRequest()
-                                        .body(ApiResponse.error("Tham số k phải nằm trong [1, 5]"));
+                                        .body(ApiResponse.error("Tham số k phải nằm trong [1, 15]"));
                 }
                 if (limit < 1 || limit > 20) {
                         return ResponseEntity.badRequest()

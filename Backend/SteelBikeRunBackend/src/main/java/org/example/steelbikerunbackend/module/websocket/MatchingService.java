@@ -39,8 +39,8 @@ public class MatchingService {
     // Tối đa số driver được broadcast (top gần nhất)
     private static final int MAX_BROADCAST_DRIVERS = 3;
 
-    // k-ring radius cho tìm driver (k=2 -> 19 ô H3 -> ~350m)
-    private static final int SEARCH_KRING = 2;
+    // k-ring radius cho tìm driver (k=13 -> khoảng 4km với Res 9)
+    private static final int SEARCH_KRING = 13;
 
     private final SimpMessagingTemplate messagingTemplate;
     private final DriverLocationService driverLocationService;
