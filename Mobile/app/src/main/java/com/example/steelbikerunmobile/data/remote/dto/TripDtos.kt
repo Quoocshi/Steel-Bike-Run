@@ -4,7 +4,8 @@ data class PriceEstimateRequestDto(
     val pickupLat: Double,
     val pickupLng: Double,
     val destLat: Double,
-    val destLng: Double
+    val destLng: Double,
+    val destAddress: String
 )
 
 data class PriceEstimateDto(
