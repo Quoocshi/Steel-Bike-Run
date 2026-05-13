@@ -14,9 +14,13 @@ import org.springframework.stereotype.Service;
 import java.io.IOException;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
+import java.util.HashSet;
 import java.util.List;
-import java.util.Map;
+import java.util.Set;
 import java.util.stream.Collectors;
+
+import org.example.steelbikerunbackend.module.driver.service.DriverLocationService;
+import org.springframework.scheduling.annotation.Scheduled;
 
 /**
  * PricingService — tính giá cuốc xe dựa trên khoảng cách Haversine và surge multiplier theo H3.
@@ -64,6 +68,7 @@ public class PricingService {
     private static final int H3_RESOLUTION = 9;
 
     private final H3SurgeZoneRepository surgeZoneRepository;
+    private final DriverLocationService driverLocationService;
 
     // H3Core lazy init (khởi tạo H3 library tốn tài nguyên)
     private H3Core h3Core;
@@ -158,6 +163,61 @@ public class PricingService {
             }
         }
         return h3Core;
+    }
+
+    // -------------------------------------------------------------------------
+    // BATCH JOB
+    // -------------------------------------------------------------------------
+
+    /**
+     * Cập nhật giá cước mỗi 5 phút.
+     * Nếu số lượng tài xế rảnh trong khu vực tìm kiếm < 3 thì tăng giá cước (surge = 1.5).
+     * Ngược lại giữ nguyên (surge = 1.0).
+     */
+    @Scheduled(fixedRate = 300000)
+    public void updateSurgePricing() {
+        log.info("[Pricing] Bắt đầu cập nhật surge pricing định kỳ (5 phút/lần)...");
+        H3Core h3 = getH3Core();
+
+        Set<String> activeH3Cells = new HashSet<>();
+
+        // 1. Lấy các ô từ DB (những ô đã từng có hoạt động)
+        surgeZoneRepository.findAll().forEach(zone -> activeH3Cells.add(zone.getH3Index()));
+
+        // 2. Lấy các ô từ vị trí tài xế hiện tại (quét Redis)
+        driverLocationService.getRedisRepository().scanAllLocationKeys().forEach(key -> {
+            String driverId = key.substring(key.lastIndexOf(":") + 1);
+            driverLocationService.getRedisRepository().findByDriverId(driverId)
+                    .ifPresent(cache -> activeH3Cells.add(cache.getH3Index()));
+        });
+
+        int updatedCount = 0;
+
+        // 3. Tính toán lại surge cho từng ô
+        for (String h3Index : activeH3Cells) {
+            try {
+                com.uber.h3core.util.LatLng center = h3.cellToLatLng(h3Index);
+                
+                // Sử dụng findNearbyDrivers có sẵn, truyền vào k-ring=1 (như khi tính giá)
+                // Chỉ cần limit=3 là đủ để biết có < 3 hay không
+                List<?> nearby = driverLocationService.findNearbyDrivers(center.lat, center.lng, SURGE_KRING, 3);
+                
+                float surgeMultiplier = nearby.size() < 3 ? 1.5f : 1.0f;
+
+                H3SurgeZone zone = surgeZoneRepository.findById(h3Index)
+                        .orElse(H3SurgeZone.builder().h3Index(h3Index).build());
+
+                zone.setSurgeMultiplier(surgeMultiplier);
+                zone.setActiveDrivers(nearby.size());
+                surgeZoneRepository.save(zone);
+
+                updatedCount++;
+            } catch (Exception e) {
+                log.error("[Pricing] Lỗi cập nhật surge cho ô {}: {}", h3Index, e.getMessage());
+            }
+        }
+
+        log.info("[Pricing] Cập nhật surge pricing hoàn tất cho {} vùng.", updatedCount);
     }
 
     // -------------------------------------------------------------------------
