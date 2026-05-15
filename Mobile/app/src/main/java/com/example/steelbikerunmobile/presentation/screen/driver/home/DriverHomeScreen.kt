@@ -30,6 +30,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ExitToApp
+import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.outlined.PersonOutline
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
@@ -77,6 +78,7 @@ private val OnlineGreen = Color(0xFF2ECC71)
 @Composable
 fun DriverHomeScreen(
     onLogout: () -> Unit,
+    onNavigateToProfile: () -> Unit = {},
     viewModel: DriverHomeViewModel = hiltViewModel()
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
@@ -125,6 +127,7 @@ fun DriverHomeScreen(
             isOnline = uiState.profile?.isOnline == true,
             onSwitchToCustomer = viewModel::switchBackToCustomer,
             isSwitchingRole = uiState.isLoading,
+            onProfileClicked = onNavigateToProfile,
             onLogout = onLogout,
             modifier = Modifier
                 .align(Alignment.TopCenter)
@@ -211,6 +214,7 @@ private fun DriverTopBar(
     isOnline: Boolean,
     onSwitchToCustomer: () -> Unit,
     isSwitchingRole: Boolean,
+    onProfileClicked: () -> Unit,
     onLogout: () -> Unit,
     modifier: Modifier = Modifier
 ) {
@@ -268,13 +272,31 @@ private fun DriverTopBar(
                 }
             }
 
-            // Logout button
+            // Profile button
             Surface(
                 shape = CircleShape,
                 color = PanelBg.copy(alpha = 0.88f)
             ) {
+                IconButton(onClick = onProfileClicked) {
+                    Icon(
+                        Icons.Default.Person,
+                        contentDescription = "Hồ sơ cá nhân",
+                        tint = DriverOrange.copy(alpha = 0.85f)
+                    )
+                }
+            }
+
+            // Emergency logout button
+            Surface(
+                shape = CircleShape,
+                color = Color(0xFF3D1515).copy(alpha = 0.88f)
+            ) {
                 IconButton(onClick = onLogout) {
-                    Icon(Icons.Default.ExitToApp, contentDescription = "Đăng xuất", tint = Color.White.copy(alpha = 0.7f))
+                    Icon(
+                        Icons.Default.ExitToApp,
+                        contentDescription = "Đăng xuất",
+                        tint = Color(0xFFEF5350)
+                    )
                 }
             }
         }

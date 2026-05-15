@@ -24,6 +24,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.GpsFixed
 import androidx.compose.material.icons.outlined.Logout
+import androidx.compose.material.icons.outlined.PersonOutline
 import androidx.compose.material.icons.outlined.Search
 import androidx.compose.material.icons.outlined.TwoWheeler
 import androidx.compose.material3.FloatingActionButton
@@ -57,6 +58,7 @@ import com.example.steelbikerunmobile.presentation.theme.SteelBikeTheme
 @Composable
 fun CustomerHomeScreen(
     onLogout: () -> Unit,
+    onNavigateToProfile: () -> Unit = {},
     viewModel: CustomerHomeViewModel = hiltViewModel(),
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
@@ -109,6 +111,7 @@ fun CustomerHomeScreen(
                 onSearchClicked = viewModel::onSearchBarClicked,
                 onSwitchToDriver = viewModel::onSwitchToDriverClicked,
                 isSwitchingRole = uiState.roleSwitchPhase == RoleSwitchPhase.SWITCHING,
+                onProfileClicked = onNavigateToProfile,
                 onLogout = onLogout,
             )
         }
@@ -262,6 +265,7 @@ private fun TopMapBar(
     onSearchClicked: () -> Unit,
     onSwitchToDriver: () -> Unit,
     isSwitchingRole: Boolean,
+    onProfileClicked: () -> Unit,
     onLogout: () -> Unit,
 ) {
     Row(
@@ -318,11 +322,24 @@ private fun TopMapBar(
             color = MaterialTheme.colorScheme.surface,
             shadowElevation = 6.dp,
         ) {
+            IconButton(onClick = onProfileClicked) {
+                Icon(
+                    Icons.Outlined.PersonOutline,
+                    contentDescription = "Hồ sơ cá nhân",
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+        }
+        Surface(
+            shape = CircleShape,
+            color = MaterialTheme.colorScheme.errorContainer,
+            shadowElevation = 6.dp,
+        ) {
             IconButton(onClick = onLogout) {
                 Icon(
                     Icons.Outlined.Logout,
                     contentDescription = "Đăng xuất",
-                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                    tint = MaterialTheme.colorScheme.error,
                 )
             }
         }
@@ -345,6 +362,7 @@ private fun CustomerHomePreview() {
                 onSearchClicked = {},
                 onSwitchToDriver = {},
                 isSwitchingRole = false,
+                onProfileClicked = {},
                 onLogout = {},
             )
         }
