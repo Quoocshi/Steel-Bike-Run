@@ -34,10 +34,16 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.example.steelbikerunmobile.domain.model.LatLng
+import kotlin.math.asin
+import kotlin.math.cos
+import kotlin.math.pow
+import kotlin.math.sin
+import kotlin.math.sqrt
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun DestinationSearchSheet(
+    pickup: LatLng,
     searchResults: List<Pair<String, LatLng>>,
     onQueryChanged: (String) -> Unit,
     onSelect: (address: String, latLng: LatLng) -> Unit,
@@ -101,9 +107,10 @@ fun DestinationSearchSheet(
 
             LazyColumn(verticalArrangement = Arrangement.spacedBy(0.dp)) {
                 items(searchResults) { (name, latLng) ->
+                    val distanceKm = haversineDistanceKm(pickup, latLng)
                     DestinationRow(
                         name = name,
-                        latLng = latLng,
+                        distanceKm = distanceKm,
                         onClick = { onSelect(name, latLng) },
                     )
                     HorizontalDivider(
@@ -118,7 +125,7 @@ fun DestinationSearchSheet(
 @Composable
 private fun DestinationRow(
     name: String,
-    latLng: LatLng,
+    distanceKm: Double,
     onClick: () -> Unit,
 ) {
     Row(
@@ -142,10 +149,20 @@ private fun DestinationRow(
                 fontWeight = FontWeight.Medium,
             )
             Text(
-                text = "${"%.4f".format(latLng.latitude)}, ${"%.4f".format(latLng.longitude)}",
+                text = "Cách đây ${"%.1f".format(distanceKm)} km",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
         }
     }
+}
+
+private fun haversineDistanceKm(a: LatLng, b: LatLng): Double {
+    val r = 6371.0
+    val dLat = Math.toRadians(b.latitude - a.latitude)
+    val dLng = Math.toRadians(b.longitude - a.longitude)
+    val h = sin(dLat / 2).pow(2) +
+            cos(Math.toRadians(a.latitude)) * cos(Math.toRadians(b.latitude)) *
+            sin(dLng / 2).pow(2)
+    return 2 * r * asin(sqrt(h))
 }
