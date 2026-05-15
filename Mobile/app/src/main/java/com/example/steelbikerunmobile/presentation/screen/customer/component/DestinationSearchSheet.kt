@@ -100,7 +100,7 @@ fun DestinationSearchSheet(
             Spacer(modifier = Modifier.height(8.dp))
 
             LazyColumn(verticalArrangement = Arrangement.spacedBy(0.dp)) {
-                items(searchResults, key = { it.first }) { (name, latLng) ->
+                items(searchResults) { (name, latLng) ->
                     DestinationRow(
                         name = name,
                         latLng = latLng,
