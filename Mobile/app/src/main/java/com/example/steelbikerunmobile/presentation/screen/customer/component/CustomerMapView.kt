@@ -4,11 +4,21 @@ import android.graphics.Bitmap
 import android.graphics.Paint
 import android.graphics.Typeface
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.toArgb
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalLifecycleOwner
+import androidx.compose.ui.viewinterop.AndroidView
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import com.example.steelbikerunmobile.BuildConfig
 import com.example.steelbikerunmobile.domain.model.LatLng as DomainLatLng
 import com.example.steelbikerunmobile.domain.model.NearbyDriver
 import com.example.steelbikerunmobile.domain.model.SurgeZone
@@ -17,24 +27,26 @@ import com.example.steelbikerunmobile.presentation.theme.CustomerPrimary
 import com.example.steelbikerunmobile.presentation.theme.CustomerSecondary
 import com.example.steelbikerunmobile.presentation.theme.DriverPrimary
 import com.example.steelbikerunmobile.presentation.theme.ErrorRed
-import com.google.android.gms.maps.CameraUpdateFactory
-import com.google.android.gms.maps.model.BitmapDescriptor
-import com.google.android.gms.maps.model.BitmapDescriptorFactory
-import com.google.android.gms.maps.model.CameraPosition
-import com.google.android.gms.maps.model.LatLng as GmsLatLng
-import com.google.maps.android.compose.GoogleMap
-import com.google.maps.android.compose.MapProperties
-import com.google.maps.android.compose.MapUiSettings
-import com.google.maps.android.compose.Marker
-import com.google.maps.android.compose.Polygon
-import com.google.maps.android.compose.rememberCameraPositionState
-import com.google.maps.android.compose.rememberMarkerState
+import org.maplibre.android.MapLibre
+import org.maplibre.android.annotations.IconFactory
+import org.maplibre.android.annotations.MarkerOptions
+import org.maplibre.android.annotations.PolygonOptions
+import org.maplibre.android.camera.CameraPosition
+import org.maplibre.android.camera.CameraUpdateFactory
+import org.maplibre.android.geometry.LatLng
+import org.maplibre.android.maps.MapView
+import org.maplibre.android.maps.MapLibreMap
+import org.maplibre.android.maps.Style
 import kotlin.math.PI
 import kotlin.math.cos
 import kotlin.math.sin
 
-// ── Extension: domain LatLng → GMS LatLng ─────────────────────────────────────
-fun DomainLatLng.toGms() = GmsLatLng(latitude, longitude)
+// ── MapTiler style URL ────────────────────────────────────────────────────────
+private val STYLE_URL: String
+    get() = "https://api.maptiler.com/maps/streets-v2/style.json?key=${BuildConfig.MAPTILER_API_KEY}"
+
+// ── Extension: domain LatLng → MapLibre LatLng ────────────────────────────────
+private fun DomainLatLng.toMapLibre() = LatLng(latitude, longitude)
 
 @Composable
 fun CustomerMapView(
@@ -46,127 +58,156 @@ fun CustomerMapView(
     flowStep: CustomerFlowStep,
     modifier: Modifier = Modifier,
 ) {
-    val cameraPositionState = rememberCameraPositionState {
-        position = CameraPosition.fromLatLngZoom(pickup.toGms(), 15f)
+    val context = LocalContext.current
+    val lifecycleOwner = LocalLifecycleOwner.current
+
+    // Initialise MapLibre once per process
+    remember { MapLibre.getInstance(context) }
+
+    // Hold MapLibreMap reference once the async callback completes
+    var mapRef by remember { mutableStateOf<MapLibreMap?>(null) }
+
+    val mapView = remember {
+        MapView(context).apply {
+            getMapAsync { mlMap ->
+                mlMap.setStyle(Style.Builder().fromUri(STYLE_URL)) {
+                    mlMap.uiSettings.apply {
+                        isCompassEnabled = false
+                    }
+                    mlMap.cameraPosition = CameraPosition.Builder()
+                        .target(pickup.toMapLibre())
+                        .zoom(15.0)
+                        .build()
+                }
+                mapRef = mlMap
+            }
+        }
     }
 
-    // Animate camera: follow tracked driver, else center on pickup
-    LaunchedEffect(trackedDriverLocation, flowStep) {
+    // ── Lifecycle bridging ──────────────────────────────────────────────────
+    DisposableEffect(lifecycleOwner) {
+        val observer = LifecycleEventObserver { _, event ->
+            when (event) {
+                Lifecycle.Event.ON_START   -> mapView.onStart()
+                Lifecycle.Event.ON_RESUME  -> mapView.onResume()
+                Lifecycle.Event.ON_PAUSE   -> mapView.onPause()
+                Lifecycle.Event.ON_STOP    -> mapView.onStop()
+                Lifecycle.Event.ON_DESTROY -> mapView.onDestroy()
+                else -> {}
+            }
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose {
+            lifecycleOwner.lifecycle.removeObserver(observer)
+            mapView.onDestroy()
+        }
+    }
+
+    // ── Camera animation ────────────────────────────────────────────────────
+    LaunchedEffect(trackedDriverLocation, flowStep, mapRef) {
+        val map = mapRef ?: return@LaunchedEffect
         val target = when {
             flowStep == CustomerFlowStep.TRACKING && trackedDriverLocation != null ->
-                trackedDriverLocation.toGms()
+                trackedDriverLocation.toMapLibre()
             flowStep == CustomerFlowStep.TRIP_PREVIEW && destination != null ->
-                GmsLatLng(
-                    (pickup.latitude  + destination.latitude)  / 2,
+                LatLng(
+                    (pickup.latitude + destination.latitude) / 2,
                     (pickup.longitude + destination.longitude) / 2,
                 )
-            else -> pickup.toGms()
+            else -> pickup.toMapLibre()
         }
-        val zoom = if (flowStep == CustomerFlowStep.TRIP_PREVIEW) 13.5f else 15f
-        cameraPositionState.animate(
+        val zoom = if (flowStep == CustomerFlowStep.TRIP_PREVIEW) 13.5 else 15.0
+        map.animateCamera(
             CameraUpdateFactory.newLatLngZoom(target, zoom),
-            durationMs = 800,
+            800,
         )
     }
 
-    // Precompute custom marker icons (stable across recompositions)
-    val pickupIcon    = remember { createCircleMarker(CustomerPrimary, "📍") }
-    val destIcon      = remember { createCircleMarker(ErrorRed, "🏁") }
-    val driverIcon    = remember { createCircleMarker(CustomerSecondary, "🚲") }
-    val trackedIcon   = remember { createCircleMarker(DriverPrimary, "🚲") }
-
-    GoogleMap(
-        modifier = modifier,
-        cameraPositionState = cameraPositionState,
-        properties = MapProperties(isMyLocationEnabled = false),
-        uiSettings = MapUiSettings(
-            zoomControlsEnabled = false,
-            myLocationButtonEnabled = false,
-            mapToolbarEnabled = false,
-        ),
+    // ── Markers & overlays ──────────────────────────────────────────────────
+    LaunchedEffect(
+        pickup, destination, nearbyDrivers, surgeZones,
+        trackedDriverLocation, flowStep, mapRef
     ) {
-        // ── H3 surge zone hexagon polygons ─────────────────────────────────────
+        val map = mapRef ?: return@LaunchedEffect
+        map.clear()
+
+        val iconFactory = IconFactory.getInstance(context)
+        val pickupBmp = createCircleMarkerBitmap(CustomerPrimary, "📍")
+        val destBmp   = createCircleMarkerBitmap(ErrorRed, "🏁")
+        val driverBmp = createCircleMarkerBitmap(CustomerSecondary, "🚲")
+        val trackedBmp = createCircleMarkerBitmap(DriverPrimary, "🚲")
+
+        // H3 surge zone hexagons
         surgeZones.forEach { zone ->
-            val vertices = hexagonVertices(zone.center.toGms(), radiusDeg = 0.0014)
+            val center = zone.center.toMapLibre()
+            val vertices = hexagonVertices(center, radiusDeg = 0.0014)
             val fill = when {
                 zone.surgeMultiplier >= 2.0 -> Color(0xCCE74C3C)
                 zone.surgeMultiplier >= 1.5 -> Color(0x99E67E22)
                 zone.surgeMultiplier >  1.0 -> Color(0x66F39C12)
                 else                        -> Color(0x442ECC71)
             }
-            Polygon(
-                points       = vertices,
-                fillColor    = fill,
-                strokeColor  = fill.copy(alpha = 0.9f),
-                strokeWidth  = 2f,
+            map.addPolygon(
+                PolygonOptions()
+                    .addAll(vertices)
+                    .fillColor(fill.toArgb())
+                    .strokeColor(fill.copy(alpha = 0.9f).toArgb())
             )
         }
 
-        // ── Nearby driver markers ───────────────────────────────────────────────
+        // Nearby driver markers
         if (flowStep == CustomerFlowStep.HOME || flowStep == CustomerFlowStep.SEARCHING) {
             nearbyDrivers.forEach { driver ->
-                val state = rememberMarkerState(
-                    key      = driver.driverId,
-                    position = driver.location.toGms(),
-                )
-                Marker(
-                    state   = state,
-                    icon    = driverIcon,
-                    title   = driver.fullName,
-                    snippet = "${driver.vehiclePlate ?: ""} · ${"%.1f".format(driver.rating)}★",
+                map.addMarker(
+                    MarkerOptions()
+                        .position(driver.location.toMapLibre())
+                        .icon(iconFactory.fromBitmap(driverBmp))
+                        .title(driver.fullName)
+                        .snippet("${driver.vehiclePlate ?: ""} · ${"%.1f".format(driver.rating)}★")
                 )
             }
         }
 
-        // ── Pickup marker ───────────────────────────────────────────────────────
-        Marker(
-            state   = rememberMarkerState(position = pickup.toGms()),
-            icon    = pickupIcon,
-            title   = "Điểm đón của bạn",
-            zIndex  = 2f,
+        // Pickup marker
+        map.addMarker(
+            MarkerOptions()
+                .position(pickup.toMapLibre())
+                .icon(iconFactory.fromBitmap(pickupBmp))
+                .title("Điểm đón của bạn")
         )
 
-        // ── Destination marker ──────────────────────────────────────────────────
-        if (destination != null && flowStep >= CustomerFlowStep.TRIP_PREVIEW) {
-            Marker(
-                state   = rememberMarkerState(position = destination.toGms()),
-                icon    = destIcon,
-                title   = "Điểm đến",
-                zIndex  = 2f,
+        // Destination marker
+        if (destination != null && flowStep.ordinal >= CustomerFlowStep.TRIP_PREVIEW.ordinal) {
+            map.addMarker(
+                MarkerOptions()
+                    .position(destination.toMapLibre())
+                    .icon(iconFactory.fromBitmap(destBmp))
+                    .title("Điểm đến")
             )
         }
 
-        // ── Tracked driver animated marker ─────────────────────────────────────
+        // Tracked driver marker
         if (flowStep == CustomerFlowStep.TRACKING && trackedDriverLocation != null) {
-            val trackedState = rememberMarkerState(position = trackedDriverLocation.toGms())
-            LaunchedEffect(trackedDriverLocation) {
-                trackedState.position = trackedDriverLocation.toGms()
-            }
-            Marker(
-                state   = trackedState,
-                icon    = trackedIcon,
-                title   = "Tài xế của bạn",
-                zIndex  = 3f,
+            map.addMarker(
+                MarkerOptions()
+                    .position(trackedDriverLocation.toMapLibre())
+                    .icon(iconFactory.fromBitmap(trackedBmp))
+                    .title("Tài xế của bạn")
             )
         }
     }
+
+    // ── Render MapView ──────────────────────────────────────────────────────
+    AndroidView(
+        factory = { mapView },
+        modifier = modifier,
+    )
 }
 
 // ── Helpers ────────────────────────────────────────────────────────────────────
 
-/**
- * Create a 60×60 dp circular bitmap marker with an emoji label.
- *
- * Returns `null` if the Google Maps SDK has not been initialised yet (in which case the
- * caller falls back to the default Marker icon). This guards against the
- * `IBitmapDescriptorFactory is not initialized` NPE that occurs when this is invoked from
- * inside a `remember { ... }` block before the first `GoogleMap` composable has rendered.
- */
-private fun createCircleMarker(bgColor: Color, emoji: String): BitmapDescriptor? = runCatching {
-    createCircleMarkerInternal(bgColor, emoji)
-}.getOrNull()
-
-private fun createCircleMarkerInternal(bgColor: Color, emoji: String): BitmapDescriptor {
+/** Create a 96×96 circular bitmap marker with an emoji label. */
+private fun createCircleMarkerBitmap(bgColor: Color, emoji: String): Bitmap {
     val size = 96
     val bitmap = Bitmap.createBitmap(size, size, Bitmap.Config.ARGB_8888)
     val canvas = android.graphics.Canvas(bitmap)
@@ -193,22 +234,18 @@ private fun createCircleMarkerInternal(bgColor: Color, emoji: String): BitmapDes
     }
     canvas.drawText(emoji, half, half + 14f, textPaint)
 
-    return BitmapDescriptorFactory.fromBitmap(bitmap)
+    return bitmap
 }
 
-/** Compute 6 vertices of a flat-top hexagon around a GMS center. */
-private fun hexagonVertices(center: GmsLatLng, radiusDeg: Double): List<GmsLatLng> {
+/** Compute 6 vertices of a flat-top hexagon around a MapLibre center. */
+private fun hexagonVertices(center: LatLng, radiusDeg: Double): List<LatLng> {
     val cosLat = cos(Math.toRadians(center.latitude))
     return (0 until 6).map { i ->
         val angleDeg = 60.0 * i - 30.0
         val angleRad = angleDeg * PI / 180.0
-        GmsLatLng(
+        LatLng(
             center.latitude  + radiusDeg * cos(angleRad),
             center.longitude + radiusDeg * sin(angleRad) / cosLat,
         )
     }
 }
-
-// Helper: allow >= comparison on CustomerFlowStep ordinal
-private operator fun CustomerFlowStep.compareTo(other: CustomerFlowStep) =
-    this.ordinal.compareTo(other.ordinal)
