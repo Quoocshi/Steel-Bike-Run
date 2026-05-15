@@ -34,36 +34,23 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.example.steelbikerunmobile.domain.model.LatLng
-
-// ── Hardcoded demo destinations (Ho Chi Minh City) ────────────────────────────
-val demoDestinations: List<Pair<String, LatLng>> = listOf(
-    "Bến Thành Market"          to LatLng(10.7720, 106.6980),
-    "Tân Sơn Nhất Airport"      to LatLng(10.8189, 106.6520),
-    "Landmark 81"               to LatLng(10.7950, 106.7218),
-    "Vincom Center Đồng Khởi"   to LatLng(10.7801, 106.7006),
-    "Nhà Thờ Đức Bà"            to LatLng(10.7797, 106.6990),
-    "Bitexco Financial Tower"   to LatLng(10.7717, 106.7038),
-    "Dinh Độc Lập"              to LatLng(10.7773, 106.6957),
-    "Bờ Kè Sài Gòn"             to LatLng(10.7745, 106.7050),
-    "Chợ Lớn"                   to LatLng(10.7498, 106.6620),
-    "Đại học Quốc gia TP.HCM"   to LatLng(10.8702, 106.8037),
-)
+import kotlin.math.asin
+import kotlin.math.cos
+import kotlin.math.pow
+import kotlin.math.sin
+import kotlin.math.sqrt
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun DestinationSearchSheet(
+    pickup: LatLng,
+    searchResults: List<Pair<String, LatLng>>,
+    onQueryChanged: (String) -> Unit,
     onSelect: (address: String, latLng: LatLng) -> Unit,
     onDismiss: () -> Unit,
 ) {
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     var query by remember { mutableStateOf("") }
-
-    val filtered = remember(query) {
-        if (query.isBlank()) demoDestinations
-        else demoDestinations.filter { (name, _) ->
-            name.contains(query, ignoreCase = true)
-        }
-    }
 
     ModalBottomSheet(
         onDismissRequest = onDismiss,
@@ -87,7 +74,10 @@ fun DestinationSearchSheet(
 
             OutlinedTextField(
                 value = query,
-                onValueChange = { query = it },
+                onValueChange = { 
+                    query = it 
+                    onQueryChanged(it)
+                },
                 placeholder = { Text("Nhập địa chỉ hoặc tên địa điểm") },
                 leadingIcon = {
                     Icon(
@@ -116,10 +106,11 @@ fun DestinationSearchSheet(
             Spacer(modifier = Modifier.height(8.dp))
 
             LazyColumn(verticalArrangement = Arrangement.spacedBy(0.dp)) {
-                items(filtered, key = { it.first }) { (name, latLng) ->
+                items(searchResults) { (name, latLng) ->
+                    val distanceKm = haversineDistanceKm(pickup, latLng)
                     DestinationRow(
                         name = name,
-                        latLng = latLng,
+                        distanceKm = distanceKm,
                         onClick = { onSelect(name, latLng) },
                     )
                     HorizontalDivider(
@@ -134,7 +125,7 @@ fun DestinationSearchSheet(
 @Composable
 private fun DestinationRow(
     name: String,
-    latLng: LatLng,
+    distanceKm: Double,
     onClick: () -> Unit,
 ) {
     Row(
@@ -158,10 +149,20 @@ private fun DestinationRow(
                 fontWeight = FontWeight.Medium,
             )
             Text(
-                text = "${"%.4f".format(latLng.latitude)}, ${"%.4f".format(latLng.longitude)}",
+                text = "Cách đây ${"%.1f".format(distanceKm)} km",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
         }
     }
+}
+
+private fun haversineDistanceKm(a: LatLng, b: LatLng): Double {
+    val r = 6371.0
+    val dLat = Math.toRadians(b.latitude - a.latitude)
+    val dLng = Math.toRadians(b.longitude - a.longitude)
+    val h = sin(dLat / 2).pow(2) +
+            cos(Math.toRadians(a.latitude)) * cos(Math.toRadians(b.latitude)) *
+            sin(dLng / 2).pow(2)
+    return 2 * r * asin(sqrt(h))
 }

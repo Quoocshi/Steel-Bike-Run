@@ -12,9 +12,12 @@ import com.example.steelbikerunmobile.domain.model.VehicleInfo
 import com.example.steelbikerunmobile.domain.usecase.driver.GetNearbyDriversUseCase
 import com.example.steelbikerunmobile.domain.usecase.driver.SwitchToDriverUseCase
 import retrofit2.HttpException
+import com.example.steelbikerunmobile.data.location.LocationStreamProvider
 import com.example.steelbikerunmobile.domain.usecase.trip.CreateTripUseCase
 import com.example.steelbikerunmobile.domain.usecase.trip.GetPriceEstimateUseCase
 import com.example.steelbikerunmobile.domain.usecase.trip.ObserveTripUpdatesUseCase
+import com.example.steelbikerunmobile.domain.usecase.trip.ReverseGeocodeUseCase
+import com.example.steelbikerunmobile.domain.usecase.trip.SearchDestinationUseCase
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
@@ -86,10 +89,12 @@ data class VehicleInfoForm(
 
 data class CustomerHomeUiState(
     val pickup: LatLng = DemoMapData.defaultPickup,
+    val pickupAddress: String = "Vị trí hiện tại",
     val flowStep: CustomerFlowStep = CustomerFlowStep.HOME,
     // Destination
     val destinationAddress: String = "",
     val destination: LatLng? = null,
+    val searchResults: List<Pair<String, LatLng>> = emptyList(),
     // Map data
     val nearbyDrivers: List<NearbyDriver> = DemoMapData.drivers,
     val surgeZones: List<SurgeZone> = DemoMapData.surgeZones,
@@ -112,6 +117,8 @@ data class CustomerHomeUiState(
     val roleSwitchPhase: RoleSwitchPhase = RoleSwitchPhase.IDLE,
     val vehicleForm: VehicleInfoForm = VehicleInfoForm(),
     val roleSwitchError: String? = null,
+    // Triggers
+    val recenterTrigger: Long = 0L,
 )
 
 @HiltViewModel
@@ -121,6 +128,9 @@ class CustomerHomeViewModel @Inject constructor(
     private val createTripUseCase: CreateTripUseCase,
     private val switchToDriverUseCase: SwitchToDriverUseCase,
     private val observeTripUpdatesUseCase: ObserveTripUpdatesUseCase,
+    private val searchDestinationUseCase: SearchDestinationUseCase,
+    private val reverseGeocodeUseCase: ReverseGeocodeUseCase,
+    private val locationStreamProvider: LocationStreamProvider,
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(CustomerHomeUiState())
@@ -129,17 +139,51 @@ class CustomerHomeViewModel @Inject constructor(
     private var trackingJob: Job? = null
     private var tripProgressJob: Job? = null
     private var wsListenerJob: Job? = null
+    private var locationJob: Job? = null
+    private var searchJob: Job? = null
     private var currentTripId: String? = null
 
-    init { refreshNearbyDrivers() }
+    init { 
+        startLocationTracking()
+        refreshNearbyDrivers() 
+    }
+
+    fun startLocationTracking() {
+        if (locationJob?.isActive == true) return
+        locationJob = viewModelScope.launch {
+            if (locationStreamProvider.hasLocationPermission()) {
+                locationStreamProvider.observeLocation().collect { heartbeat ->
+                    _uiState.update { it.copy(pickup = heartbeat.location) }
+                }
+            }
+        }
+    }
 
     // ── Navigation triggers ────────────────────────────────────────────────────
 
     fun onSearchBarClicked() =
-        _uiState.update { it.copy(flowStep = CustomerFlowStep.SEARCHING) }
+        _uiState.update { it.copy(flowStep = CustomerFlowStep.SEARCHING, searchResults = emptyList()) }
 
     fun onDismissSearch() =
-        _uiState.update { it.copy(flowStep = CustomerFlowStep.HOME) }
+        _uiState.update { it.copy(flowStep = CustomerFlowStep.HOME, searchResults = emptyList()) }
+
+    fun onSearchQueryChanged(query: String) {
+        searchJob?.cancel()
+        if (query.isBlank()) {
+            _uiState.update { it.copy(searchResults = emptyList()) }
+            return
+        }
+        searchJob = viewModelScope.launch {
+            delay(500) // Debounce
+            searchDestinationUseCase(query).onSuccess { results ->
+                _uiState.update { it.copy(searchResults = results) }
+            }
+        }
+    }
+
+    fun onRecenterClicked() {
+        _uiState.update { it.copy(recenterTrigger = System.currentTimeMillis()) }
+    }
 
     fun onDestinationSelected(address: String, destination: LatLng) {
         _uiState.update {
@@ -149,6 +193,7 @@ class CustomerHomeViewModel @Inject constructor(
                 flowStep = CustomerFlowStep.TRIP_PREVIEW,
                 estimate = null,
                 isLoading = true,
+                pickupAddress = "Đang lấy địa chỉ...",
             )
         }
         fetchEstimate(destination)
@@ -223,7 +268,7 @@ class CustomerHomeViewModel @Inject constructor(
         val state = _uiState.value
         val est = state.estimate
         val receipt = TripReceipt(
-            pickupAddress = "Điểm đón của bạn",
+            pickupAddress = state.pickupAddress,
             destinationAddress = state.destinationAddress,
             distanceKm = est?.distanceKm ?: 3.5,
             durationMinutes = est?.durationMinutes ?: 18,
@@ -270,6 +315,10 @@ class CustomerHomeViewModel @Inject constructor(
     private fun fetchEstimate(destination: LatLng) {
         val current = _uiState.value
         viewModelScope.launch {
+            val addressResult = reverseGeocodeUseCase(current.pickup)
+            val finalPickupAddress = addressResult.getOrNull() ?: "Vị trí hiện tại"
+            _uiState.update { it.copy(pickupAddress = finalPickupAddress) }
+
             getPriceEstimateUseCase(
                 BookingDraft(current.pickup, destination, current.destinationAddress)
             ).fold(
@@ -376,6 +425,7 @@ class CustomerHomeViewModel @Inject constructor(
      * Resets any stale in-flight phase back to IDLE so the button becomes usable again.
      */
     fun onScreenResumed() {
+        startLocationTracking()
         val phase = _uiState.value.roleSwitchPhase
         if (phase != RoleSwitchPhase.IDLE && phase != RoleSwitchPhase.AWAITING_VEHICLE_INFO) {
             _uiState.update { it.copy(roleSwitchPhase = RoleSwitchPhase.IDLE, roleSwitchError = null) }
@@ -507,6 +557,7 @@ class CustomerHomeViewModel @Inject constructor(
         trackingJob?.cancel()
         tripProgressJob?.cancel()
         wsListenerJob?.cancel()
+        locationJob?.cancel()
         observeTripUpdatesUseCase.unsubscribe()
         super.onCleared()
     }
