@@ -149,6 +149,8 @@ fun CustomerHomeScreen(
         // SEARCHING
         if (uiState.flowStep == CustomerFlowStep.SEARCHING) {
             DestinationSearchSheet(
+                searchResults = uiState.searchResults,
+                onQueryChanged = viewModel::onSearchQueryChanged,
                 onSelect  = viewModel::onDestinationSelected,
                 onDismiss = viewModel::onDismissSearch,
             )

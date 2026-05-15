@@ -16,6 +16,7 @@ import com.example.steelbikerunmobile.data.location.LocationStreamProvider
 import com.example.steelbikerunmobile.domain.usecase.trip.CreateTripUseCase
 import com.example.steelbikerunmobile.domain.usecase.trip.GetPriceEstimateUseCase
 import com.example.steelbikerunmobile.domain.usecase.trip.ObserveTripUpdatesUseCase
+import com.example.steelbikerunmobile.domain.usecase.trip.SearchDestinationUseCase
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
@@ -91,6 +92,7 @@ data class CustomerHomeUiState(
     // Destination
     val destinationAddress: String = "",
     val destination: LatLng? = null,
+    val searchResults: List<Pair<String, LatLng>> = emptyList(),
     // Map data
     val nearbyDrivers: List<NearbyDriver> = DemoMapData.drivers,
     val surgeZones: List<SurgeZone> = DemoMapData.surgeZones,
@@ -122,6 +124,7 @@ class CustomerHomeViewModel @Inject constructor(
     private val createTripUseCase: CreateTripUseCase,
     private val switchToDriverUseCase: SwitchToDriverUseCase,
     private val observeTripUpdatesUseCase: ObserveTripUpdatesUseCase,
+    private val searchDestinationUseCase: SearchDestinationUseCase,
     private val locationStreamProvider: LocationStreamProvider,
 ) : ViewModel() {
 
@@ -132,6 +135,7 @@ class CustomerHomeViewModel @Inject constructor(
     private var tripProgressJob: Job? = null
     private var wsListenerJob: Job? = null
     private var locationJob: Job? = null
+    private var searchJob: Job? = null
     private var currentTripId: String? = null
 
     init { 
@@ -153,10 +157,24 @@ class CustomerHomeViewModel @Inject constructor(
     // ── Navigation triggers ────────────────────────────────────────────────────
 
     fun onSearchBarClicked() =
-        _uiState.update { it.copy(flowStep = CustomerFlowStep.SEARCHING) }
+        _uiState.update { it.copy(flowStep = CustomerFlowStep.SEARCHING, searchResults = emptyList()) }
 
     fun onDismissSearch() =
-        _uiState.update { it.copy(flowStep = CustomerFlowStep.HOME) }
+        _uiState.update { it.copy(flowStep = CustomerFlowStep.HOME, searchResults = emptyList()) }
+
+    fun onSearchQueryChanged(query: String) {
+        searchJob?.cancel()
+        if (query.isBlank()) {
+            _uiState.update { it.copy(searchResults = emptyList()) }
+            return
+        }
+        searchJob = viewModelScope.launch {
+            delay(500) // Debounce
+            searchDestinationUseCase(query).onSuccess { results ->
+                _uiState.update { it.copy(searchResults = results) }
+            }
+        }
+    }
 
     fun onDestinationSelected(address: String, destination: LatLng) {
         _uiState.update {

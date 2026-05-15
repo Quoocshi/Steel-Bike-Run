@@ -35,35 +35,16 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.example.steelbikerunmobile.domain.model.LatLng
 
-// ── Hardcoded demo destinations (Ho Chi Minh City) ────────────────────────────
-val demoDestinations: List<Pair<String, LatLng>> = listOf(
-    "Bến Thành Market"          to LatLng(10.7720, 106.6980),
-    "Tân Sơn Nhất Airport"      to LatLng(10.8189, 106.6520),
-    "Landmark 81"               to LatLng(10.7950, 106.7218),
-    "Vincom Center Đồng Khởi"   to LatLng(10.7801, 106.7006),
-    "Nhà Thờ Đức Bà"            to LatLng(10.7797, 106.6990),
-    "Bitexco Financial Tower"   to LatLng(10.7717, 106.7038),
-    "Dinh Độc Lập"              to LatLng(10.7773, 106.6957),
-    "Bờ Kè Sài Gòn"             to LatLng(10.7745, 106.7050),
-    "Chợ Lớn"                   to LatLng(10.7498, 106.6620),
-    "Đại học Quốc gia TP.HCM"   to LatLng(10.8702, 106.8037),
-)
-
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun DestinationSearchSheet(
+    searchResults: List<Pair<String, LatLng>>,
+    onQueryChanged: (String) -> Unit,
     onSelect: (address: String, latLng: LatLng) -> Unit,
     onDismiss: () -> Unit,
 ) {
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     var query by remember { mutableStateOf("") }
-
-    val filtered = remember(query) {
-        if (query.isBlank()) demoDestinations
-        else demoDestinations.filter { (name, _) ->
-            name.contains(query, ignoreCase = true)
-        }
-    }
 
     ModalBottomSheet(
         onDismissRequest = onDismiss,
@@ -87,7 +68,10 @@ fun DestinationSearchSheet(
 
             OutlinedTextField(
                 value = query,
-                onValueChange = { query = it },
+                onValueChange = { 
+                    query = it 
+                    onQueryChanged(it)
+                },
                 placeholder = { Text("Nhập địa chỉ hoặc tên địa điểm") },
                 leadingIcon = {
                     Icon(
@@ -116,7 +100,7 @@ fun DestinationSearchSheet(
             Spacer(modifier = Modifier.height(8.dp))
 
             LazyColumn(verticalArrangement = Arrangement.spacedBy(0.dp)) {
-                items(filtered, key = { it.first }) { (name, latLng) ->
+                items(searchResults, key = { it.first }) { (name, latLng) ->
                     DestinationRow(
                         name = name,
                         latLng = latLng,
