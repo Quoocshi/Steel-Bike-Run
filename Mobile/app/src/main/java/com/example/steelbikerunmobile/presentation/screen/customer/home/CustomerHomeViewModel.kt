@@ -115,6 +115,8 @@ data class CustomerHomeUiState(
     val roleSwitchPhase: RoleSwitchPhase = RoleSwitchPhase.IDLE,
     val vehicleForm: VehicleInfoForm = VehicleInfoForm(),
     val roleSwitchError: String? = null,
+    // Triggers
+    val recenterTrigger: Long = 0L,
 )
 
 @HiltViewModel
@@ -174,6 +176,10 @@ class CustomerHomeViewModel @Inject constructor(
                 _uiState.update { it.copy(searchResults = results) }
             }
         }
+    }
+
+    fun onRecenterClicked() {
+        _uiState.update { it.copy(recenterTrigger = System.currentTimeMillis()) }
     }
 
     fun onDestinationSelected(address: String, destination: LatLng) {

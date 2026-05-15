@@ -67,6 +67,21 @@ fun CustomerHomeScreen(
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
 
+    val context = androidx.compose.ui.platform.LocalContext.current
+    val hasLocationPermission = {
+        androidx.core.content.ContextCompat.checkSelfPermission(context, android.Manifest.permission.ACCESS_FINE_LOCATION) == android.content.pm.PackageManager.PERMISSION_GRANTED ||
+            androidx.core.content.ContextCompat.checkSelfPermission(context, android.Manifest.permission.ACCESS_COARSE_LOCATION) == android.content.pm.PackageManager.PERMISSION_GRANTED
+    }
+
+    val permissionLauncher = androidx.activity.compose.rememberLauncherForActivityResult(
+        androidx.activity.result.contract.ActivityResultContracts.RequestMultiplePermissions()
+    ) { results ->
+        if (results.values.any { it }) {
+            viewModel.startLocationTracking()
+            viewModel.onRecenterClicked()
+        }
+    }
+
     // Listen to lifecycle ON_RESUME to trigger location tracking if permissions were just granted
     val lifecycleOwner = LocalLifecycleOwner.current
     DisposableEffect(lifecycleOwner) {
@@ -104,6 +119,7 @@ fun CustomerHomeScreen(
             surgeZones            = uiState.surgeZones,
             trackedDriverLocation = uiState.trackedDriverLocation,
             flowStep              = uiState.flowStep,
+            recenterTrigger       = uiState.recenterTrigger,
             modifier              = Modifier.fillMaxSize(),
         )
 
@@ -132,7 +148,16 @@ fun CustomerHomeScreen(
 
         if (showFab) {
             FloatingActionButton(
-                onClick = { },
+                onClick = { 
+                    if (hasLocationPermission()) {
+                        viewModel.onRecenterClicked()
+                    } else {
+                        permissionLauncher.launch(arrayOf(
+                            android.Manifest.permission.ACCESS_FINE_LOCATION,
+                            android.Manifest.permission.ACCESS_COARSE_LOCATION
+                        ))
+                    }
+                },
                 modifier = Modifier
                     .align(Alignment.BottomEnd)
                     .padding(end = 16.dp, bottom = 220.dp),

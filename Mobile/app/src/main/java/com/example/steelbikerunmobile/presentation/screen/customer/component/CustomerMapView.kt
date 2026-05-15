@@ -56,6 +56,7 @@ fun CustomerMapView(
     surgeZones: List<SurgeZone>,
     trackedDriverLocation: DomainLatLng?,
     flowStep: CustomerFlowStep,
+    recenterTrigger: Long = 0L,
     modifier: Modifier = Modifier,
 ) {
     val context = LocalContext.current
@@ -104,7 +105,7 @@ fun CustomerMapView(
     }
 
     // ── Camera animation ────────────────────────────────────────────────────
-    LaunchedEffect(trackedDriverLocation, flowStep, mapRef) {
+    LaunchedEffect(trackedDriverLocation, flowStep, mapRef, recenterTrigger) {
         val map = mapRef ?: return@LaunchedEffect
         val target = when {
             flowStep == CustomerFlowStep.TRACKING && trackedDriverLocation != null ->
