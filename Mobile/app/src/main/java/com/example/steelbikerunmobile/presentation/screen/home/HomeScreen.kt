@@ -41,6 +41,7 @@ private val LOCATION_PERMISSIONS = arrayOf(
 @Composable
 fun HomeScreen(
     onLogout: () -> Unit,
+    onNavigateToProfile: (isDriverMode: Boolean) -> Unit,
     viewModel: HomeViewModel = hiltViewModel(),
 ) {
     val session by viewModel.session.collectAsStateWithLifecycle()
@@ -150,11 +151,17 @@ fun HomeScreen(
     when (session?.role) {
         UserRole.DRIVER -> {
             SteelBikeTheme(mode = AppThemeMode.DRIVER) {
-                DriverHomeScreen(onLogout = onLogout)
+                DriverHomeScreen(
+                    onLogout = onLogout,
+                    onNavigateToProfile = { onNavigateToProfile(true) },
+                )
             }
         }
         UserRole.CUSTOMER, UserRole.ADMIN -> {
-            CustomerHomeScreen(onLogout = onLogout)
+            CustomerHomeScreen(
+                onLogout = onLogout,
+                onNavigateToProfile = { onNavigateToProfile(false) },
+            )
         }
         null -> {
             Box(

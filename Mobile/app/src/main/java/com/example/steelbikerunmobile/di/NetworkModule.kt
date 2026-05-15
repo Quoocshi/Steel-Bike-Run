@@ -2,9 +2,11 @@ package com.example.steelbikerunmobile.di
 
 import com.example.steelbikerunmobile.BuildConfig
 import com.example.steelbikerunmobile.data.remote.AuthTokenInterceptor
+import com.example.steelbikerunmobile.data.remote.SessionExpiredInterceptor
 import com.example.steelbikerunmobile.data.remote.api.AuthApiService
 import com.example.steelbikerunmobile.data.remote.api.DriverApiService
 import com.example.steelbikerunmobile.data.remote.api.TripApiService
+import com.example.steelbikerunmobile.data.remote.api.UserApiService
 import com.google.gson.Gson
 import dagger.Module
 import dagger.Provides
@@ -22,12 +24,16 @@ object NetworkModule {
 
     @Provides
     @Singleton
-    fun provideOkHttpClient(authTokenInterceptor: AuthTokenInterceptor): OkHttpClient {
+    fun provideOkHttpClient(
+        authTokenInterceptor: AuthTokenInterceptor,
+        sessionExpiredInterceptor: SessionExpiredInterceptor,
+    ): OkHttpClient {
         val loggingInterceptor = HttpLoggingInterceptor().apply {
             level = HttpLoggingInterceptor.Level.BODY
         }
         return OkHttpClient.Builder()
             .addInterceptor(authTokenInterceptor)
+            .addInterceptor(sessionExpiredInterceptor)
             .addInterceptor(loggingInterceptor)
             .connectTimeout(30, java.util.concurrent.TimeUnit.SECONDS)
             .readTimeout(30, java.util.concurrent.TimeUnit.SECONDS)
@@ -61,6 +67,12 @@ object NetworkModule {
     @Singleton
     fun provideTripApiService(retrofit: Retrofit): TripApiService {
         return retrofit.create(TripApiService::class.java)
+    }
+
+    @Provides
+    @Singleton
+    fun provideUserApiService(retrofit: Retrofit): UserApiService {
+        return retrofit.create(UserApiService::class.java)
     }
 
     @Provides
