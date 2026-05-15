@@ -12,6 +12,7 @@ import com.example.steelbikerunmobile.domain.model.VehicleInfo
 import com.example.steelbikerunmobile.domain.usecase.driver.GetNearbyDriversUseCase
 import com.example.steelbikerunmobile.domain.usecase.driver.SwitchToDriverUseCase
 import retrofit2.HttpException
+import com.example.steelbikerunmobile.data.location.LocationStreamProvider
 import com.example.steelbikerunmobile.domain.usecase.trip.CreateTripUseCase
 import com.example.steelbikerunmobile.domain.usecase.trip.GetPriceEstimateUseCase
 import com.example.steelbikerunmobile.domain.usecase.trip.ObserveTripUpdatesUseCase
@@ -121,6 +122,7 @@ class CustomerHomeViewModel @Inject constructor(
     private val createTripUseCase: CreateTripUseCase,
     private val switchToDriverUseCase: SwitchToDriverUseCase,
     private val observeTripUpdatesUseCase: ObserveTripUpdatesUseCase,
+    private val locationStreamProvider: LocationStreamProvider,
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(CustomerHomeUiState())
@@ -129,9 +131,24 @@ class CustomerHomeViewModel @Inject constructor(
     private var trackingJob: Job? = null
     private var tripProgressJob: Job? = null
     private var wsListenerJob: Job? = null
+    private var locationJob: Job? = null
     private var currentTripId: String? = null
 
-    init { refreshNearbyDrivers() }
+    init { 
+        startLocationTracking()
+        refreshNearbyDrivers() 
+    }
+
+    fun startLocationTracking() {
+        if (locationJob?.isActive == true) return
+        locationJob = viewModelScope.launch {
+            if (locationStreamProvider.hasLocationPermission()) {
+                locationStreamProvider.observeLocation().collect { heartbeat ->
+                    _uiState.update { it.copy(pickup = heartbeat.location) }
+                }
+            }
+        }
+    }
 
     // ── Navigation triggers ────────────────────────────────────────────────────
 
@@ -376,6 +393,7 @@ class CustomerHomeViewModel @Inject constructor(
      * Resets any stale in-flight phase back to IDLE so the button becomes usable again.
      */
     fun onScreenResumed() {
+        startLocationTracking()
         val phase = _uiState.value.roleSwitchPhase
         if (phase != RoleSwitchPhase.IDLE && phase != RoleSwitchPhase.AWAITING_VEHICLE_INFO) {
             _uiState.update { it.copy(roleSwitchPhase = RoleSwitchPhase.IDLE, roleSwitchError = null) }
@@ -507,6 +525,7 @@ class CustomerHomeViewModel @Inject constructor(
         trackingJob?.cancel()
         tripProgressJob?.cancel()
         wsListenerJob?.cancel()
+        locationJob?.cancel()
         observeTripUpdatesUseCase.unsubscribe()
         super.onCleared()
     }

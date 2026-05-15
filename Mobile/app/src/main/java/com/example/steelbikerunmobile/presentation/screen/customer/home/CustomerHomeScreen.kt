@@ -34,6 +34,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
@@ -44,6 +45,9 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.example.steelbikerunmobile.presentation.screen.customer.component.CustomerMapView
 import com.example.steelbikerunmobile.presentation.screen.customer.component.DestinationSearchSheet
@@ -63,13 +67,18 @@ fun CustomerHomeScreen(
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
 
-    // Reset any stale role-switch phase each time this composable enters composition.
-    // Needed because Hilt scopes CustomerHomeViewModel to the NavBackStackEntry (Home
-    // route), so the same VM instance is reused across CUSTOMER→DRIVER→CUSTOMER
-    // transitions. Without this, roleSwitchPhase could be left in a non-IDLE state from
-    // the previous session, causing the "Switch to Driver" button to silently do nothing.
-    LaunchedEffect(Unit) {
-        viewModel.onScreenResumed()
+    // Listen to lifecycle ON_RESUME to trigger location tracking if permissions were just granted
+    val lifecycleOwner = LocalLifecycleOwner.current
+    DisposableEffect(lifecycleOwner) {
+        val observer = LifecycleEventObserver { _, event ->
+            if (event == Lifecycle.Event.ON_RESUME) {
+                viewModel.onScreenResumed()
+            }
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose {
+            lifecycleOwner.lifecycle.removeObserver(observer)
+        }
     }
 
     // System back-button behaviour per step
