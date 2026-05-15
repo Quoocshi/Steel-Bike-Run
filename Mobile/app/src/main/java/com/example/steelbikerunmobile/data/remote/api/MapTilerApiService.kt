@@ -14,4 +14,13 @@ interface MapTilerApiService {
         @Query("language") language: String = "vi",
         @Query("limit") limit: Int = 10
     ): MapTilerGeocodingResponse
+
+    @GET("geocoding/{longitude},{latitude}.json")
+    suspend fun reverseGeocode(
+        @Path("longitude") longitude: Double,
+        @Path("latitude") latitude: Double,
+        @Query("key") apiKey: String,
+        @Query("language") language: String = "vi",
+        @Query("limit") limit: Int = 1
+    ): MapTilerGeocodingResponse
 }

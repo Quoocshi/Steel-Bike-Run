@@ -48,7 +48,7 @@ import com.example.steelbikerunmobile.presentation.theme.WarningAmber
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun TripPreviewSheet(
-    pickupLatLng: LatLng,
+    pickupAddress: String,
     destinationAddress: String,
     estimate: PriceEstimate?,
     paymentMethod: PaymentMethod,
@@ -94,7 +94,7 @@ fun TripPreviewSheet(
                         icon = Icons.Outlined.TripOrigin,
                         iconTint = MaterialTheme.colorScheme.primary,
                         label = "Điểm đón",
-                        detail = "${"%.4f".format(pickupLatLng.latitude)}, ${"%.4f".format(pickupLatLng.longitude)}",
+                        detail = pickupAddress,
                     )
                     HorizontalDivider(color = MaterialTheme.colorScheme.outline.copy(alpha = 0.5f))
                     RouteRow(

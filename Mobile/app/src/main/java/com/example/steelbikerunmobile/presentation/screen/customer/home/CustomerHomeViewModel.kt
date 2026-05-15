@@ -16,6 +16,7 @@ import com.example.steelbikerunmobile.data.location.LocationStreamProvider
 import com.example.steelbikerunmobile.domain.usecase.trip.CreateTripUseCase
 import com.example.steelbikerunmobile.domain.usecase.trip.GetPriceEstimateUseCase
 import com.example.steelbikerunmobile.domain.usecase.trip.ObserveTripUpdatesUseCase
+import com.example.steelbikerunmobile.domain.usecase.trip.ReverseGeocodeUseCase
 import com.example.steelbikerunmobile.domain.usecase.trip.SearchDestinationUseCase
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.Job
@@ -88,6 +89,7 @@ data class VehicleInfoForm(
 
 data class CustomerHomeUiState(
     val pickup: LatLng = DemoMapData.defaultPickup,
+    val pickupAddress: String = "Vị trí hiện tại",
     val flowStep: CustomerFlowStep = CustomerFlowStep.HOME,
     // Destination
     val destinationAddress: String = "",
@@ -127,6 +129,7 @@ class CustomerHomeViewModel @Inject constructor(
     private val switchToDriverUseCase: SwitchToDriverUseCase,
     private val observeTripUpdatesUseCase: ObserveTripUpdatesUseCase,
     private val searchDestinationUseCase: SearchDestinationUseCase,
+    private val reverseGeocodeUseCase: ReverseGeocodeUseCase,
     private val locationStreamProvider: LocationStreamProvider,
 ) : ViewModel() {
 
@@ -190,6 +193,7 @@ class CustomerHomeViewModel @Inject constructor(
                 flowStep = CustomerFlowStep.TRIP_PREVIEW,
                 estimate = null,
                 isLoading = true,
+                pickupAddress = "Đang lấy địa chỉ...",
             )
         }
         fetchEstimate(destination)
@@ -264,7 +268,7 @@ class CustomerHomeViewModel @Inject constructor(
         val state = _uiState.value
         val est = state.estimate
         val receipt = TripReceipt(
-            pickupAddress = "Điểm đón của bạn",
+            pickupAddress = state.pickupAddress,
             destinationAddress = state.destinationAddress,
             distanceKm = est?.distanceKm ?: 3.5,
             durationMinutes = est?.durationMinutes ?: 18,
@@ -311,6 +315,10 @@ class CustomerHomeViewModel @Inject constructor(
     private fun fetchEstimate(destination: LatLng) {
         val current = _uiState.value
         viewModelScope.launch {
+            val addressResult = reverseGeocodeUseCase(current.pickup)
+            val finalPickupAddress = addressResult.getOrNull() ?: "Vị trí hiện tại"
+            _uiState.update { it.copy(pickupAddress = finalPickupAddress) }
+
             getPriceEstimateUseCase(
                 BookingDraft(current.pickup, destination, current.destinationAddress)
             ).fold(

@@ -184,7 +184,7 @@ fun CustomerHomeScreen(
         // TRIP_PREVIEW
         if (uiState.flowStep == CustomerFlowStep.TRIP_PREVIEW) {
             TripPreviewSheet(
-                pickupLatLng          = uiState.pickup,
+                pickupAddress         = uiState.pickupAddress,
                 destinationAddress    = uiState.destinationAddress,
                 estimate              = uiState.estimate,
                 paymentMethod         = uiState.paymentMethod,
