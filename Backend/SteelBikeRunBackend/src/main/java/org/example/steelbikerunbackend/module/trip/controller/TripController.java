@@ -104,6 +104,20 @@ public class TripController {
     }
 
     // -------------------------------------------------------------------------
+    // ARRIVE (Driver - Authenticated)
+    // -------------------------------------------------------------------------
+
+    @Operation(summary = "Đã đến điểm đón",
+            description = "Driver xác nhận đã đến điểm đón khách hàng.")
+    @PutMapping("/{id}/arrive")
+    public ResponseEntity<ApiResponse<TripResponse>> arriveTrip(
+            Authentication authentication,
+            @PathVariable UUID id) {
+        TripResponse result = tripService.arriveTrip(authentication.getName(), id);
+        return ResponseEntity.ok(ApiResponse.success("Tài xế đã đến điểm đón", result));
+    }
+
+    // -------------------------------------------------------------------------
     // START (Driver - Authenticated)
     // -------------------------------------------------------------------------
 

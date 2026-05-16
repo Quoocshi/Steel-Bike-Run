@@ -34,7 +34,7 @@ import kotlin.math.sin
 import kotlin.math.sqrt
 
 // ── Shared trip status (mirrors backend enum) ──────────────────────────────────
-enum class TripStatus { REQUESTED, ACCEPTED, IN_PROGRESS, COMPLETED }
+enum class TripStatus { REQUESTED, ACCEPTED, ARRIVED, IN_PROGRESS, COMPLETED }
 
 // ── Customer flow step state machine ──────────────────────────────────────────
 enum class CustomerFlowStep {
@@ -391,6 +391,7 @@ class CustomerHomeViewModel @Inject constructor(
         trackingJob = viewModelScope.launch {
             observeTripUpdatesUseCase.tripStatusMessages().collect { statusData ->
                 when (statusData.status) {
+                    "ARRIVED" -> onDriverArrived()
                     "IN_PROGRESS" -> onTripStarted()
                     "COMPLETED" -> onTripCompleted()
                     "CANCELLED" -> {
@@ -401,6 +402,15 @@ class CustomerHomeViewModel @Inject constructor(
                     }
                 }
             }
+        }
+    }
+
+    private fun onDriverArrived() {
+        _uiState.update { 
+            it.copy(
+                tripStatus = TripStatus.ARRIVED,
+                tripStatusMessage = "Tài xế đã đến điểm đón"
+            )
         }
     }
 

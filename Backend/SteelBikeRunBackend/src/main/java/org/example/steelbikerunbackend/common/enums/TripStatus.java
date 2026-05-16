@@ -12,6 +12,7 @@ package org.example.steelbikerunbackend.common.enums;
 public enum TripStatus {
     REQUESTED,
     ACCEPTED,
+    ARRIVED,
     IN_PROGRESS,
     COMPLETED,
     CANCELLED

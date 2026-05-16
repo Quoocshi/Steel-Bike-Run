@@ -46,6 +46,12 @@ class TripRepositoryImpl @Inject constructor(
             Unit
         }
 
+    override suspend fun arriveTrip(tripId: String): Result<Unit> =
+        NetworkErrorMapper.safeCall {
+            tripApiService.arriveTrip(tripId)
+            Unit
+        }
+
     override suspend fun startTrip(tripId: String): Result<Unit> =
         NetworkErrorMapper.safeCall {
             tripApiService.startTrip(tripId)

@@ -63,6 +63,7 @@ data class ActiveTripData(
     val totalDistanceKm: Double,
     val pickupLat: Double,
     val pickupLng: Double,
+    val status: String = "ACCEPTED", // "ACCEPTED", "ARRIVED", "IN_PROGRESS"
     val tripStartTimeMs: Long = System.currentTimeMillis(),
 )
 
@@ -222,6 +223,46 @@ class DriverHomeViewModel @Inject constructor(
     }
 
     // ── Trip in progress ──────────────────────────────────────────────────────
+
+    fun onArriveAtPickup() {
+        val active = _uiState.value.activeTrip ?: return
+        viewModelScope.launch {
+            _uiState.update { it.copy(isLoading = true) }
+            tripRepository.arriveTrip(active.tripId).fold(
+                onSuccess = {
+                    _uiState.update { 
+                        it.copy(
+                            isLoading = false,
+                            activeTrip = active.copy(status = "ARRIVED")
+                        )
+                    }
+                },
+                onFailure = { t ->
+                    _uiState.update { it.copy(isLoading = false, errorMessage = t.message ?: "Không thể cập nhật trạng thái") }
+                }
+            )
+        }
+    }
+
+    fun onStartTrip() {
+        val active = _uiState.value.activeTrip ?: return
+        viewModelScope.launch {
+            _uiState.update { it.copy(isLoading = true) }
+            tripRepository.startTrip(active.tripId).fold(
+                onSuccess = {
+                    _uiState.update { 
+                        it.copy(
+                            isLoading = false,
+                            activeTrip = active.copy(status = "IN_PROGRESS")
+                        )
+                    }
+                },
+                onFailure = { t ->
+                    _uiState.update { it.copy(isLoading = false, errorMessage = t.message ?: "Không thể bắt đầu chuyến đi") }
+                }
+            )
+        }
+    }
 
     /** Driver swipes to complete the active trip → call backend API. */
     fun onSwipeToComplete() {

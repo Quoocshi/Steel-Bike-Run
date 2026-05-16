@@ -28,6 +28,8 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowForward
 import androidx.compose.material.icons.filled.LocationOn
 import androidx.compose.material.icons.filled.Star
+import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
@@ -63,6 +65,8 @@ private val PanelDark = Color(0xFF1C1C1E)
 @Composable
 fun TripInProgressOverlay(
     activeTrip: ActiveTripData,
+    onArriveAtPickup: () -> Unit,
+    onStartTrip: () -> Unit,
     onSwipeToComplete: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
@@ -154,7 +158,31 @@ fun TripInProgressOverlay(
             Spacer(Modifier.height(22.dp))
 
             // ── Swipe to Complete (orange, large) ──────────────────────────────
-            SwipeToCompleteButton(onComplete = onSwipeToComplete)
+            when (activeTrip.status) {
+                "ACCEPTED" -> {
+                    Button(
+                        onClick = onArriveAtPickup,
+                        modifier = Modifier.fillMaxWidth().height(56.dp),
+                        shape = RoundedCornerShape(16.dp),
+                        colors = ButtonDefaults.buttonColors(containerColor = DriverOrange)
+                    ) {
+                        Text("Đã đến điểm đón", style = MaterialTheme.typography.titleMedium)
+                    }
+                }
+                "ARRIVED" -> {
+                    Button(
+                        onClick = onStartTrip,
+                        modifier = Modifier.fillMaxWidth().height(56.dp),
+                        shape = RoundedCornerShape(16.dp),
+                        colors = ButtonDefaults.buttonColors(containerColor = ActiveGreen)
+                    ) {
+                        Text("Bắt đầu chuyến đi", style = MaterialTheme.typography.titleMedium)
+                    }
+                }
+                else -> {
+                    SwipeToCompleteButton(onComplete = onSwipeToComplete)
+                }
+            }
 
             Spacer(Modifier.height(4.dp))
         }

@@ -171,6 +171,40 @@ public class TripService {
         }
 
         // -------------------------------------------------------------------------
+        // ARRIVE: Driver đã đến điểm đón
+        // -------------------------------------------------------------------------
+
+        @Transactional
+        public TripResponse arriveTrip(String driverEmail, UUID tripId) {
+                Trip trip = tripRepository.findById(tripId)
+                                .orElseThrow(() -> new AppException(ErrorCode.TRIP_NOT_FOUND));
+
+                if (trip.getStatus() != TripStatus.ACCEPTED) {
+                        throw new AppException(ErrorCode.INVALID_REQUEST,
+                                        "Chỉ có thể báo đã đến khi cuốc xe ở trạng thái ACCEPTED.");
+                }
+
+                User user = userRepository.findByEmail(driverEmail)
+                                .orElseThrow(() -> new AppException(ErrorCode.USER_NOT_FOUND));
+                Driver driver = driverRepository.findByUserIdWithUser(user.getId())
+                                .orElseThrow(() -> new AppException(ErrorCode.DRIVER_NOT_FOUND));
+
+                if (trip.getDriver() == null || !trip.getDriver().getId().equals(driver.getId())) {
+                        throw new AppException(ErrorCode.INVALID_REQUEST, "Bạn không phải tài xế của cuốc này.");
+                }
+
+                trip.setStatus(TripStatus.ARRIVED);
+                trip = tripRepository.save(trip);
+
+                log.info("[Trip] Trip {} ARRIVED by driver {} ({})",
+                                trip.getId(), driver.getId(), user.getEmail());
+
+                matchingService.broadcastTripStatus(trip, "Tài xế đã đến điểm đón");
+
+                return toResponse(trip);
+        }
+
+        // -------------------------------------------------------------------------
         // START: Driver bắt đầu chuyến đi
         // -------------------------------------------------------------------------
 
@@ -182,7 +216,7 @@ public class TripService {
          */
         @Transactional
         public TripResponse startTrip(String driverEmail, UUID tripId) {
-                Trip trip = findTripAndValidateDriver(driverEmail, tripId, TripStatus.ACCEPTED);
+                Trip trip = findTripAndValidateDriver(driverEmail, tripId, TripStatus.ARRIVED);
 
                 trip.setStatus(TripStatus.IN_PROGRESS);
                 trip.setStartedAt(LocalDateTime.now());
