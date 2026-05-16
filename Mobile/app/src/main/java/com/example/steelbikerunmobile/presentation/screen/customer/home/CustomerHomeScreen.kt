@@ -24,6 +24,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.GpsFixed
 import androidx.compose.material.icons.outlined.Logout
+import androidx.compose.material.icons.outlined.PersonOutline
 import androidx.compose.material.icons.outlined.Search
 import androidx.compose.material.icons.outlined.TwoWheeler
 import androidx.compose.material3.FloatingActionButton
@@ -33,6 +34,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
@@ -43,6 +45,9 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.example.steelbikerunmobile.presentation.screen.customer.component.CustomerMapView
 import com.example.steelbikerunmobile.presentation.screen.customer.component.DestinationSearchSheet
@@ -57,17 +62,38 @@ import com.example.steelbikerunmobile.presentation.theme.SteelBikeTheme
 @Composable
 fun CustomerHomeScreen(
     onLogout: () -> Unit,
+    onNavigateToProfile: () -> Unit = {},
     viewModel: CustomerHomeViewModel = hiltViewModel(),
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
 
-    // Reset any stale role-switch phase each time this composable enters composition.
-    // Needed because Hilt scopes CustomerHomeViewModel to the NavBackStackEntry (Home
-    // route), so the same VM instance is reused across CUSTOMER→DRIVER→CUSTOMER
-    // transitions. Without this, roleSwitchPhase could be left in a non-IDLE state from
-    // the previous session, causing the "Switch to Driver" button to silently do nothing.
-    LaunchedEffect(Unit) {
-        viewModel.onScreenResumed()
+    val context = androidx.compose.ui.platform.LocalContext.current
+    val hasLocationPermission = {
+        androidx.core.content.ContextCompat.checkSelfPermission(context, android.Manifest.permission.ACCESS_FINE_LOCATION) == android.content.pm.PackageManager.PERMISSION_GRANTED ||
+            androidx.core.content.ContextCompat.checkSelfPermission(context, android.Manifest.permission.ACCESS_COARSE_LOCATION) == android.content.pm.PackageManager.PERMISSION_GRANTED
+    }
+
+    val permissionLauncher = androidx.activity.compose.rememberLauncherForActivityResult(
+        androidx.activity.result.contract.ActivityResultContracts.RequestMultiplePermissions()
+    ) { results ->
+        if (results.values.any { it }) {
+            viewModel.startLocationTracking()
+            viewModel.onRecenterClicked()
+        }
+    }
+
+    // Listen to lifecycle ON_RESUME to trigger location tracking if permissions were just granted
+    val lifecycleOwner = LocalLifecycleOwner.current
+    DisposableEffect(lifecycleOwner) {
+        val observer = LifecycleEventObserver { _, event ->
+            if (event == Lifecycle.Event.ON_RESUME) {
+                viewModel.onScreenResumed()
+            }
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose {
+            lifecycleOwner.lifecycle.removeObserver(observer)
+        }
     }
 
     // System back-button behaviour per step
@@ -93,6 +119,7 @@ fun CustomerHomeScreen(
             surgeZones            = uiState.surgeZones,
             trackedDriverLocation = uiState.trackedDriverLocation,
             flowStep              = uiState.flowStep,
+            recenterTrigger       = uiState.recenterTrigger,
             modifier              = Modifier.fillMaxSize(),
         )
 
@@ -109,6 +136,7 @@ fun CustomerHomeScreen(
                 onSearchClicked = viewModel::onSearchBarClicked,
                 onSwitchToDriver = viewModel::onSwitchToDriverClicked,
                 isSwitchingRole = uiState.roleSwitchPhase == RoleSwitchPhase.SWITCHING,
+                onProfileClicked = onNavigateToProfile,
                 onLogout = onLogout,
             )
         }
@@ -120,7 +148,16 @@ fun CustomerHomeScreen(
 
         if (showFab) {
             FloatingActionButton(
-                onClick = { },
+                onClick = { 
+                    if (hasLocationPermission()) {
+                        viewModel.onRecenterClicked()
+                    } else {
+                        permissionLauncher.launch(arrayOf(
+                            android.Manifest.permission.ACCESS_FINE_LOCATION,
+                            android.Manifest.permission.ACCESS_COARSE_LOCATION
+                        ))
+                    }
+                },
                 modifier = Modifier
                     .align(Alignment.BottomEnd)
                     .padding(end = 16.dp, bottom = 220.dp),
@@ -137,6 +174,9 @@ fun CustomerHomeScreen(
         // SEARCHING
         if (uiState.flowStep == CustomerFlowStep.SEARCHING) {
             DestinationSearchSheet(
+                pickup = uiState.pickup,
+                searchResults = uiState.searchResults,
+                onQueryChanged = viewModel::onSearchQueryChanged,
                 onSelect  = viewModel::onDestinationSelected,
                 onDismiss = viewModel::onDismissSearch,
             )
@@ -145,7 +185,7 @@ fun CustomerHomeScreen(
         // TRIP_PREVIEW
         if (uiState.flowStep == CustomerFlowStep.TRIP_PREVIEW) {
             TripPreviewSheet(
-                pickupLatLng          = uiState.pickup,
+                pickupAddress         = uiState.pickupAddress,
                 destinationAddress    = uiState.destinationAddress,
                 estimate              = uiState.estimate,
                 paymentMethod         = uiState.paymentMethod,
@@ -262,6 +302,7 @@ private fun TopMapBar(
     onSearchClicked: () -> Unit,
     onSwitchToDriver: () -> Unit,
     isSwitchingRole: Boolean,
+    onProfileClicked: () -> Unit,
     onLogout: () -> Unit,
 ) {
     Row(
@@ -318,11 +359,24 @@ private fun TopMapBar(
             color = MaterialTheme.colorScheme.surface,
             shadowElevation = 6.dp,
         ) {
+            IconButton(onClick = onProfileClicked) {
+                Icon(
+                    Icons.Outlined.PersonOutline,
+                    contentDescription = "Hồ sơ cá nhân",
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+        }
+        Surface(
+            shape = CircleShape,
+            color = MaterialTheme.colorScheme.errorContainer,
+            shadowElevation = 6.dp,
+        ) {
             IconButton(onClick = onLogout) {
                 Icon(
                     Icons.Outlined.Logout,
                     contentDescription = "Đăng xuất",
-                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                    tint = MaterialTheme.colorScheme.error,
                 )
             }
         }
@@ -345,6 +399,7 @@ private fun CustomerHomePreview() {
                 onSearchClicked = {},
                 onSwitchToDriver = {},
                 isSwitchingRole = false,
+                onProfileClicked = {},
                 onLogout = {},
             )
         }

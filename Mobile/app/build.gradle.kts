@@ -26,6 +26,9 @@ android {
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         manifestPlaceholders["MAPS_API_KEY"] = localProps.getProperty("MAPS_API_KEY", "")
+        buildConfigField("String", "MAPTILER_API_KEY", "\"rARsKNebTp47YXCYPRSn\"")
+        buildConfigField("String", "GOONG_MAP_KEY", "\"${localProps.getProperty("GOONG_MAP_KEY", "")}\"")
+        buildConfigField("String", "GOONG_API_KEY", "\"${localProps.getProperty("GOONG_API_KEY", "")}\"")
     }
 
     compileOptions {
@@ -90,13 +93,16 @@ dependencies {
     implementation(libs.kotlinx.coroutines.android)
     implementation(libs.androidx.compose.ui.text.google.fonts)
     implementation(libs.androidx.compose.material.icons.extended)
-    implementation(libs.maps.compose)
-    implementation(libs.play.services.maps)
+    implementation(libs.maplibre.native)
     implementation(libs.camerax.core)
     implementation(libs.camerax.camera2)
     implementation(libs.camerax.lifecycle)
     implementation(libs.camerax.view)
     implementation(libs.mlkit.face.detection)
+
+    // H3 for Hexagon Maps
+    implementation("com.uber:h3:4.1.1")
+
     kapt(libs.hilt.android.compiler)
     testImplementation(libs.junit)
     androidTestImplementation(libs.androidx.junit)

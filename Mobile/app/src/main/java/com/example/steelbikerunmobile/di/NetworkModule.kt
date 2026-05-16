@@ -2,9 +2,13 @@ package com.example.steelbikerunmobile.di
 
 import com.example.steelbikerunmobile.BuildConfig
 import com.example.steelbikerunmobile.data.remote.AuthTokenInterceptor
+import com.example.steelbikerunmobile.data.remote.SessionExpiredInterceptor
 import com.example.steelbikerunmobile.data.remote.api.AuthApiService
 import com.example.steelbikerunmobile.data.remote.api.DriverApiService
+import com.example.steelbikerunmobile.data.remote.api.MapTilerApiService
+import com.example.steelbikerunmobile.data.remote.api.GoongApiService
 import com.example.steelbikerunmobile.data.remote.api.TripApiService
+import com.example.steelbikerunmobile.data.remote.api.UserApiService
 import com.google.gson.Gson
 import dagger.Module
 import dagger.Provides
@@ -22,12 +26,16 @@ object NetworkModule {
 
     @Provides
     @Singleton
-    fun provideOkHttpClient(authTokenInterceptor: AuthTokenInterceptor): OkHttpClient {
+    fun provideOkHttpClient(
+        authTokenInterceptor: AuthTokenInterceptor,
+        sessionExpiredInterceptor: SessionExpiredInterceptor,
+    ): OkHttpClient {
         val loggingInterceptor = HttpLoggingInterceptor().apply {
             level = HttpLoggingInterceptor.Level.BODY
         }
         return OkHttpClient.Builder()
             .addInterceptor(authTokenInterceptor)
+            .addInterceptor(sessionExpiredInterceptor)
             .addInterceptor(loggingInterceptor)
             .connectTimeout(30, java.util.concurrent.TimeUnit.SECONDS)
             .readTimeout(30, java.util.concurrent.TimeUnit.SECONDS)
@@ -65,5 +73,53 @@ object NetworkModule {
 
     @Provides
     @Singleton
+    fun provideUserApiService(retrofit: Retrofit): UserApiService {
+        return retrofit.create(UserApiService::class.java)
+    }
+
+    @Provides
+    @Singleton
     fun provideGson(): Gson = Gson()
+
+    @Provides
+    @Singleton
+    fun provideMapTilerApiService(): MapTilerApiService {
+        val loggingInterceptor = HttpLoggingInterceptor().apply {
+            level = HttpLoggingInterceptor.Level.BODY
+        }
+        val okHttpClient = OkHttpClient.Builder()
+            .addInterceptor(loggingInterceptor)
+            .connectTimeout(15, java.util.concurrent.TimeUnit.SECONDS)
+            .readTimeout(15, java.util.concurrent.TimeUnit.SECONDS)
+            .build()
+
+        val retrofit = Retrofit.Builder()
+            .baseUrl("https://api.maptiler.com/")
+            .client(okHttpClient)
+            .addConverterFactory(GsonConverterFactory.create())
+            .build()
+
+        return retrofit.create(MapTilerApiService::class.java)
+    }
+
+    @Provides
+    @Singleton
+    fun provideGoongApiService(): GoongApiService {
+        val loggingInterceptor = HttpLoggingInterceptor().apply {
+            level = HttpLoggingInterceptor.Level.BODY
+        }
+        val okHttpClient = OkHttpClient.Builder()
+            .addInterceptor(loggingInterceptor)
+            .connectTimeout(15, java.util.concurrent.TimeUnit.SECONDS)
+            .readTimeout(15, java.util.concurrent.TimeUnit.SECONDS)
+            .build()
+
+        val retrofit = Retrofit.Builder()
+            .baseUrl("https://rsapi.goong.io/")
+            .client(okHttpClient)
+            .addConverterFactory(GsonConverterFactory.create())
+            .build()
+
+        return retrofit.create(GoongApiService::class.java)
+    }
 }

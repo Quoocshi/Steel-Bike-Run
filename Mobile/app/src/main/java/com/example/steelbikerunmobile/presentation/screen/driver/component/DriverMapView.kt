@@ -5,30 +5,42 @@ import android.graphics.Canvas
 import android.graphics.Paint
 import android.graphics.Typeface
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.toArgb
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalLifecycleOwner
+import androidx.compose.ui.viewinterop.AndroidView
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import com.example.steelbikerunmobile.BuildConfig
 import com.example.steelbikerunmobile.domain.model.LatLng as DomainLatLng
 import com.example.steelbikerunmobile.domain.model.SurgeZone
-import com.google.android.gms.maps.CameraUpdateFactory
-import com.google.android.gms.maps.model.BitmapDescriptor
-import com.google.android.gms.maps.model.BitmapDescriptorFactory
-import com.google.android.gms.maps.model.LatLng
-import com.google.maps.android.compose.GoogleMap
-import com.google.maps.android.compose.MapProperties
-import com.google.maps.android.compose.MapType
-import com.google.maps.android.compose.MapUiSettings
-import com.google.maps.android.compose.Marker
-import com.google.maps.android.compose.Polygon
-import com.google.maps.android.compose.rememberCameraPositionState
-import com.google.maps.android.compose.rememberMarkerState
-import androidx.compose.ui.graphics.Color
+import org.maplibre.android.MapLibre
+import org.maplibre.android.annotations.IconFactory
+import org.maplibre.android.annotations.MarkerOptions
+import org.maplibre.android.annotations.PolygonOptions
+import org.maplibre.android.camera.CameraPosition
+import org.maplibre.android.camera.CameraUpdateFactory
+import org.maplibre.android.geometry.LatLng
+import org.maplibre.android.maps.MapView
+import org.maplibre.android.maps.MapLibreMap
+import org.maplibre.android.maps.Style
 import kotlin.math.cos
 import kotlin.math.sin
 
+// ── MapTiler dark style for Driver mode ───────────────────────────────────────
+private val STYLE_URL: String
+    get() = "https://api.maptiler.com/maps/streets-v2-dark/style.json?key=${BuildConfig.MAPTILER_API_KEY}"
+
 // ── Coordinate helpers ────────────────────────────────────────────────────────
-private fun DomainLatLng.toGms() = LatLng(latitude, longitude)
+private fun DomainLatLng.toMapLibre() = LatLng(latitude, longitude)
 
 /** Six vertices of a flat-top hexagon centred at [center] with given [radiusDeg]. */
 private fun hexagonVertices(center: LatLng, radiusDeg: Double): List<LatLng> =
@@ -49,15 +61,7 @@ private fun surgeColor(multiplier: Double): Color {
 }
 
 // ── Marker bitmap helpers ─────────────────────────────────────────────────────
-/**
- * Returns `null` if Maps SDK has not been initialised yet (caller falls back to default
- * marker icon). Guards against the `IBitmapDescriptorFactory is not initialized` NPE.
- */
-private fun createCircleMarker(emoji: String, bgColor: Color, sizePx: Int = 96): BitmapDescriptor? = runCatching {
-    createCircleMarkerInternal(emoji, bgColor, sizePx)
-}.getOrNull()
-
-private fun createCircleMarkerInternal(emoji: String, bgColor: Color, sizePx: Int): BitmapDescriptor {
+private fun createCircleMarkerBitmap(emoji: String, bgColor: Color, sizePx: Int = 96): Bitmap {
     val bmp = Bitmap.createBitmap(sizePx, sizePx, Bitmap.Config.ARGB_8888)
     val canvas = Canvas(bmp)
     val paint = Paint(Paint.ANTI_ALIAS_FLAG)
@@ -75,7 +79,7 @@ private fun createCircleMarkerInternal(emoji: String, bgColor: Color, sizePx: In
     paint.textSize = sizePx * 0.46f
     paint.typeface = Typeface.DEFAULT_BOLD
     canvas.drawText(emoji, r, r - (paint.ascent() + paint.descent()) / 2f, paint)
-    return BitmapDescriptorFactory.fromBitmap(bmp)
+    return bmp
 }
 
 // ── DriverMapView ─────────────────────────────────────────────────────────────
@@ -85,32 +89,67 @@ fun DriverMapView(
     surgeZones: List<SurgeZone>,
     modifier: Modifier = Modifier
 ) {
-    val cameraState = rememberCameraPositionState()
-    val defaultCenter = LatLng(10.7769, 106.7009)
+    val context = LocalContext.current
+    val lifecycleOwner = LocalLifecycleOwner.current
+    val defaultCenter = LatLng(10.7769, 106.7009) // HCMC
 
-    // Animate camera to driver location
-    LaunchedEffect(driverLocation) {
-        val target = driverLocation?.toGms() ?: defaultCenter
-        cameraState.animate(CameraUpdateFactory.newLatLngZoom(target, 14f))
+    // Initialise MapLibre once per process
+    remember { MapLibre.getInstance(context) }
+
+    var mapRef by remember { mutableStateOf<MapLibreMap?>(null) }
+
+    val mapView = remember {
+        MapView(context).apply {
+            getMapAsync { mlMap ->
+                mlMap.setStyle(Style.Builder().fromUri(STYLE_URL)) {
+                    mlMap.uiSettings.apply {
+                        isCompassEnabled = false
+                    }
+                    val target = driverLocation?.toMapLibre() ?: defaultCenter
+                    mlMap.cameraPosition = CameraPosition.Builder()
+                        .target(target)
+                        .zoom(14.0)
+                        .build()
+                }
+                mapRef = mlMap
+            }
+        }
     }
 
-    val driverIcon = remember {
-        createCircleMarker("🏍", Color(0xFFE67E22), sizePx = 112)
+    // ── Lifecycle bridging ──────────────────────────────────────────────────
+    DisposableEffect(lifecycleOwner) {
+        val observer = LifecycleEventObserver { _, event ->
+            when (event) {
+                Lifecycle.Event.ON_START   -> mapView.onStart()
+                Lifecycle.Event.ON_RESUME  -> mapView.onResume()
+                Lifecycle.Event.ON_PAUSE   -> mapView.onPause()
+                Lifecycle.Event.ON_STOP    -> mapView.onStop()
+                Lifecycle.Event.ON_DESTROY -> mapView.onDestroy()
+                else -> {}
+            }
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose {
+            lifecycleOwner.lifecycle.removeObserver(observer)
+            mapView.onDestroy()
+        }
     }
 
-    GoogleMap(
-        modifier = modifier,
-        cameraPositionState = cameraState,
-        properties = MapProperties(
-            mapType = MapType.HYBRID,   // Satellite + roads = naturally dark, high-contrast
-            isMyLocationEnabled = false
-        ),
-        uiSettings = MapUiSettings(
-            zoomControlsEnabled = false,
-            myLocationButtonEnabled = false,
-            compassEnabled = false
-        )
-    ) {
+    // ── Camera animation ────────────────────────────────────────────────────
+    LaunchedEffect(driverLocation, mapRef) {
+        val map = mapRef ?: return@LaunchedEffect
+        val target = driverLocation?.toMapLibre() ?: defaultCenter
+        map.animateCamera(CameraUpdateFactory.newLatLngZoom(target, 14.0))
+    }
+
+    // ── Markers & overlays ──────────────────────────────────────────────────
+    LaunchedEffect(driverLocation, surgeZones, mapRef) {
+        val map = mapRef ?: return@LaunchedEffect
+        map.clear()
+
+        val iconFactory = IconFactory.getInstance(context)
+        val driverBmp = createCircleMarkerBitmap("🏍", Color(0xFFE67E22), sizePx = 112)
+
         // Surge zone hexagons
         surgeZones.forEach { zone ->
             val center = LatLng(zone.center.latitude, zone.center.longitude)
@@ -119,23 +158,28 @@ fun DriverMapView(
             val stroke = if (zone.surgeMultiplier >= 1.8) Color(1f, 0.2f, 0.05f, 0.85f)
             else Color(0.90f, 0.45f, 0.05f, 0.85f)
 
-            Polygon(
-                points = vertices,
-                fillColor = fill,
-                strokeColor = stroke,
-                strokeWidth = 3f,
-                zIndex = 1f
+            map.addPolygon(
+                PolygonOptions()
+                    .addAll(vertices)
+                    .fillColor(fill.toArgb())
+                    .strokeColor(stroke.toArgb())
             )
         }
 
         // Driver's own location marker
         driverLocation?.let { loc ->
-            Marker(
-                state = rememberMarkerState(position = loc.toGms()),
-                icon = driverIcon,
-                title = "Vị trí của bạn",
-                zIndex = 10f
+            map.addMarker(
+                MarkerOptions()
+                    .position(loc.toMapLibre())
+                    .icon(iconFactory.fromBitmap(driverBmp))
+                    .title("Vị trí của bạn")
             )
         }
     }
+
+    // ── Render MapView ──────────────────────────────────────────────────────
+    AndroidView(
+        factory = { mapView },
+        modifier = modifier,
+    )
 }
