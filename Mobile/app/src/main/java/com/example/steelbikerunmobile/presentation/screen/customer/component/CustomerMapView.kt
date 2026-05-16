@@ -41,9 +41,9 @@ import kotlin.math.PI
 import kotlin.math.cos
 import kotlin.math.sin
 
-// ── MapTiler style URL ────────────────────────────────────────────────────────
+// ── Goong Map style URL ───────────────────────────────────────────────────────
 private val STYLE_URL: String
-    get() = "https://api.maptiler.com/maps/streets-v2/style.json?key=${BuildConfig.MAPTILER_API_KEY}"
+    get() = "https://tiles.goong.io/assets/goong_map_web.json?api_key=${BuildConfig.GOONG_MAP_KEY}"
 
 // ── Extension: domain LatLng → MapLibre LatLng ────────────────────────────────
 private fun DomainLatLng.toMapLibre() = LatLng(latitude, longitude)
