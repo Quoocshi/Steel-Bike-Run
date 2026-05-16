@@ -61,9 +61,15 @@ class StompWebSocketManager @Inject constructor(
 
     /**
      * Kết nối WebSocket và gửi STOMP CONNECT frame.
+     * Hàm này sẽ suspend cho đến khi nhận được frame CONNECTED từ server.
      */
     suspend fun connect() {
-        if (webSocket != null) return
+        if (isConnected) return
+        if (webSocket != null) {
+            // Đang kết nối, chờ kết quả
+            connectionState.first { it == ConnectionState.CONNECTED || it == ConnectionState.DISCONNECTED || it == ConnectionState.ERROR }
+            return
+        }
 
         val token = dataStore.tokenFlow.first()
         val wsUrl = BuildConfig.WS_URL
@@ -110,6 +116,9 @@ class StompWebSocketManager @Inject constructor(
                 }
             }
         )
+
+        // Suspend chờ nhận được CONNECTED từ server
+        connectionState.first { it == ConnectionState.CONNECTED || it == ConnectionState.DISCONNECTED || it == ConnectionState.ERROR }
     }
 
     /**
@@ -125,8 +134,12 @@ class StompWebSocketManager @Inject constructor(
                 "destination" to destination
             )
         )
-        webSocket?.send(frame)
-        Log.d(TAG, "SUBSCRIBE $destination (id=$subId)")
+        if (isConnected) {
+            webSocket?.send(frame)
+            Log.d(TAG, "SUBSCRIBE $destination (id=$subId)")
+        } else {
+            Log.w(TAG, "Cannot SUBSCRIBE $destination: STOMP is not connected!")
+        }
         return subId
     }
 
@@ -152,7 +165,11 @@ class StompWebSocketManager @Inject constructor(
             ),
             json
         )
-        webSocket?.send(frame)
+        if (isConnected) {
+            webSocket?.send(frame)
+        } else {
+            Log.w(TAG, "Cannot SEND to $destination: STOMP is not connected!")
+        }
     }
 
     /**

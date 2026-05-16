@@ -141,6 +141,7 @@ class CustomerHomeViewModel @Inject constructor(
     private var wsListenerJob: Job? = null
     private var locationJob: Job? = null
     private var searchJob: Job? = null
+    private var driverLocationJob: Job? = null
     private var currentTripId: String? = null
 
     init { 
@@ -225,6 +226,7 @@ class CustomerHomeViewModel @Inject constructor(
 
     fun onCancelFinding() {
         trackingJob?.cancel()
+        driverLocationJob?.cancel()
         wsListenerJob?.cancel()
         observeTripUpdatesUseCase.unsubscribe()
         currentTripId = null
@@ -294,6 +296,7 @@ class CustomerHomeViewModel @Inject constructor(
     fun onReceiptDismissed() {
         tripProgressJob?.cancel()
         trackingJob?.cancel()
+        driverLocationJob?.cancel()
         _uiState.update {
             it.copy(
                 flowStep = CustomerFlowStep.HOME,
@@ -358,9 +361,22 @@ class CustomerHomeViewModel @Inject constructor(
                         tripStatusMessage = "Tài xế đang đến điểm đón (${driver.etaMinutes} phút)",
                     )
                 }
+                
+                // Start tracking driver's location
+                startDriverLocationTracking(driver.driverId)
+                
                 // Start listening for status changes
                 startTripStatusListener()
                 return@collect  // Chỉ cần nhận 1 lần
+            }
+        }
+    }
+
+    private fun startDriverLocationTracking(driverId: String) {
+        driverLocationJob?.cancel()
+        driverLocationJob = viewModelScope.launch {
+            observeTripUpdatesUseCase.driverLocationMessages(driverId).collect { loc ->
+                _uiState.update { it.copy(trackedDriverLocation = loc) }
             }
         }
     }
@@ -379,6 +395,7 @@ class CustomerHomeViewModel @Inject constructor(
                     "COMPLETED" -> onTripCompleted()
                     "CANCELLED" -> {
                         wsListenerJob?.cancel()
+                        driverLocationJob?.cancel()
                         observeTripUpdatesUseCase.unsubscribe()
                         resetToHome()
                     }

@@ -61,6 +61,8 @@ data class ActiveTripData(
     val surgeMultiplier: Double,
     val durationMinutes: Int,
     val totalDistanceKm: Double,
+    val pickupLat: Double,
+    val pickupLng: Double,
     val tripStartTimeMs: Long = System.currentTimeMillis(),
 )
 
@@ -183,6 +185,8 @@ class DriverHomeViewModel @Inject constructor(
                         surgeMultiplier = incoming.surgeMultiplier,
                         durationMinutes = incoming.durationMinutes,
                         totalDistanceKm = incoming.totalDistanceKm,
+                        pickupLat = incoming.pickupLat,
+                        pickupLng = incoming.pickupLng,
                     )
                     _uiState.update {
                         it.copy(
