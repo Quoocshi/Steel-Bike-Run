@@ -35,9 +35,9 @@ import org.maplibre.android.maps.Style
 import kotlin.math.cos
 import kotlin.math.sin
 
-// ── MapTiler dark style for Driver mode ───────────────────────────────────────
+// ── Goong dark style for Driver mode ───────────────────────────────────────
 private val STYLE_URL: String
-    get() = "https://api.maptiler.com/maps/streets-v2-dark/style.json?key=${BuildConfig.MAPTILER_API_KEY}"
+    get() = "https://tiles.goong.io/assets/goong_map_dark.json?api_key=${BuildConfig.GOONG_MAP_KEY}"
 
 // ── Coordinate helpers ────────────────────────────────────────────────────────
 private fun DomainLatLng.toMapLibre() = LatLng(latitude, longitude)
