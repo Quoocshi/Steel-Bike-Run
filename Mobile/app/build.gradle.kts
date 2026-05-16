@@ -99,6 +99,10 @@ dependencies {
     implementation(libs.camerax.lifecycle)
     implementation(libs.camerax.view)
     implementation(libs.mlkit.face.detection)
+
+    // H3 for Hexagon Maps
+    implementation("com.uber:h3:4.1.1")
+
     kapt(libs.hilt.android.compiler)
     testImplementation(libs.junit)
     androidTestImplementation(libs.androidx.junit)
