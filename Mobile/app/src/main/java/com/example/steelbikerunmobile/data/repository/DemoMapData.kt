@@ -8,11 +8,7 @@ import kotlin.math.abs
 object DemoMapData {
     val defaultPickup = LatLng(10.7769, 106.7009)
 
-    val drivers = listOf(
-        NearbyDriver("demo-driver-1", "An Nguyen", LatLng(10.7782, 106.6997), 4.9f, "51G-123.45", 0.4),
-        NearbyDriver("demo-driver-2", "Binh Tran", LatLng(10.7749, 106.7031), 4.8f, "59X-456.78", 0.7),
-        NearbyDriver("demo-driver-3", "Chi Le", LatLng(10.7805, 106.7043), 4.7f, "50N-888.12", 1.1)
-    )
+    val drivers = emptyList<NearbyDriver>()
 
     val surgeZones = try {
         val h3 = com.uber.h3core.H3Core.newInstance()
