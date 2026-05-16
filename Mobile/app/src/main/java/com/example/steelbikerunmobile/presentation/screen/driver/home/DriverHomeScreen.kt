@@ -115,9 +115,14 @@ fun DriverHomeScreen(
 
     Box(modifier = Modifier.fillMaxSize()) {
 
+        // Determine if we need to show route to customer
+        val pickupLocation = uiState.activeTrip?.let { com.example.steelbikerunmobile.domain.model.LatLng(it.pickupLat, it.pickupLng) }
+            ?: uiState.incomingTrip?.let { com.example.steelbikerunmobile.domain.model.LatLng(it.pickupLat, it.pickupLng) }
+
         // ── Layer 1: Full-screen map ──────────────────────────────────────────
         DriverMapView(
             driverLocation = uiState.currentLocation,
+            pickupLocation = pickupLocation,
             surgeZones = uiState.surgeZones,
             modifier = Modifier.fillMaxSize()
         )

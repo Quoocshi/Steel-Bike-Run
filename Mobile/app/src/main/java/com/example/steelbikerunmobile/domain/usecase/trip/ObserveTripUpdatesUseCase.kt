@@ -4,6 +4,7 @@ import com.example.steelbikerunmobile.data.remote.websocket.StompMessage
 import com.example.steelbikerunmobile.data.remote.websocket.StompWebSocketManager
 import com.google.gson.Gson
 import com.google.gson.JsonObject
+import com.mapbox.mapboxsdk.geometry.LatLng
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.filter
 import kotlinx.coroutines.flow.mapNotNull
@@ -83,6 +84,28 @@ class ObserveTripUpdatesUseCase @Inject constructor(
     fun unsubscribe() {
         subscriptionId?.let { stompManager.unsubscribe(it) }
         subscriptionId = null
+    }
+
+    /**
+     * Flow nhận location cập nhật từ tài xế
+     */
+    fun driverLocationMessages(driverId: String): Flow<LatLng> {
+        // Tự động subscribe nếu chưa
+        stompManager.subscribe("/topic/driver/$driverId/location")
+        
+        return stompManager.incomingMessages
+            .filter { it.destination == "/topic/driver/$driverId/location" }
+            .mapNotNull { msg ->
+                try {
+                    val json = gson.fromJson(msg.body, JsonObject::class.java)
+                    if (json.has("latitude") && json.has("longitude")) {
+                        LatLng(
+                            json.get("latitude").asDouble,
+                            json.get("longitude").asDouble
+                        )
+                    } else null
+                } catch (_: Exception) { null }
+            }
     }
 }
 
