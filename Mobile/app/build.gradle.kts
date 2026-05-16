@@ -27,6 +27,8 @@ android {
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         manifestPlaceholders["MAPS_API_KEY"] = localProps.getProperty("MAPS_API_KEY", "")
         buildConfigField("String", "MAPTILER_API_KEY", "\"rARsKNebTp47YXCYPRSn\"")
+        buildConfigField("String", "GOONG_MAP_KEY", "\"${localProps.getProperty("GOONG_MAP_KEY", "")}\"")
+        buildConfigField("String", "GOONG_API_KEY", "\"${localProps.getProperty("GOONG_API_KEY", "")}\"")
     }
 
     compileOptions {

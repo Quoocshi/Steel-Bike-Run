@@ -6,7 +6,7 @@ import com.example.steelbikerunmobile.data.remote.SessionExpiredInterceptor
 import com.example.steelbikerunmobile.data.remote.api.AuthApiService
 import com.example.steelbikerunmobile.data.remote.api.DriverApiService
 import com.example.steelbikerunmobile.data.remote.api.MapTilerApiService
-import com.example.steelbikerunmobile.data.remote.api.NominatimApiService
+import com.example.steelbikerunmobile.data.remote.api.GoongApiService
 import com.example.steelbikerunmobile.data.remote.api.TripApiService
 import com.example.steelbikerunmobile.data.remote.api.UserApiService
 import com.google.gson.Gson
@@ -104,7 +104,7 @@ object NetworkModule {
 
     @Provides
     @Singleton
-    fun provideNominatimApiService(): NominatimApiService {
+    fun provideGoongApiService(): GoongApiService {
         val loggingInterceptor = HttpLoggingInterceptor().apply {
             level = HttpLoggingInterceptor.Level.BODY
         }
@@ -115,11 +115,11 @@ object NetworkModule {
             .build()
 
         val retrofit = Retrofit.Builder()
-            .baseUrl("https://nominatim.openstreetmap.org/")
+            .baseUrl("https://rsapi.goong.io/")
             .client(okHttpClient)
             .addConverterFactory(GsonConverterFactory.create())
             .build()
 
-        return retrofit.create(NominatimApiService::class.java)
+        return retrofit.create(GoongApiService::class.java)
     }
 }
