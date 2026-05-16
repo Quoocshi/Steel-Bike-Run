@@ -32,6 +32,12 @@ import org.maplibre.android.geometry.LatLng
 import org.maplibre.android.maps.MapView
 import org.maplibre.android.maps.MapLibreMap
 import org.maplibre.android.maps.Style
+import org.maplibre.android.annotations.PolylineOptions
+import org.json.JSONObject
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
+import okhttp3.OkHttpClient
+import okhttp3.Request
 import kotlin.math.cos
 import kotlin.math.sin
 
@@ -86,6 +92,7 @@ private fun createCircleMarkerBitmap(emoji: String, bgColor: Color, sizePx: Int 
 @Composable
 fun DriverMapView(
     driverLocation: DomainLatLng?,
+    pickupLocation: DomainLatLng?,
     surgeZones: List<SurgeZone>,
     modifier: Modifier = Modifier
 ) {
@@ -142,8 +149,37 @@ fun DriverMapView(
         map.animateCamera(CameraUpdateFactory.newLatLngZoom(target, 14.0))
     }
 
+    var routePoints by remember { mutableStateOf<List<LatLng>>(emptyList()) }
+    val okHttpClient = remember { OkHttpClient() }
+
+    // Fetch route from Goong
+    LaunchedEffect(driverLocation, pickupLocation) {
+        if (driverLocation != null && pickupLocation != null) {
+            withContext(Dispatchers.IO) {
+                try {
+                    val url = "https://rsapi.goong.io/Direction?origin=${driverLocation.latitude},${driverLocation.longitude}&destination=${pickupLocation.latitude},${pickupLocation.longitude}&vehicle=bike&api_key=${BuildConfig.GOONG_API_KEY}"
+                    val request = Request.Builder().url(url).build()
+                    val response = okHttpClient.newCall(request).execute()
+                    val body = response.body?.string()
+                    if (response.isSuccessful && body != null) {
+                        val json = JSONObject(body)
+                        val routes = json.optJSONArray("routes")
+                        if (routes != null && routes.length() > 0) {
+                            val encoded = routes.getJSONObject(0).getJSONObject("overview_polyline").getString("points")
+                            routePoints = decodePolyline(encoded)
+                        }
+                    }
+                } catch (e: Exception) {
+                    e.printStackTrace()
+                }
+            }
+        } else {
+            routePoints = emptyList()
+        }
+    }
+
     // ── Markers & overlays ──────────────────────────────────────────────────
-    LaunchedEffect(driverLocation, surgeZones, mapRef) {
+    LaunchedEffect(driverLocation, pickupLocation, surgeZones, routePoints, mapRef) {
         val map = mapRef ?: return@LaunchedEffect
         map.clear()
 
@@ -175,6 +211,27 @@ fun DriverMapView(
                     .title("Vị trí của bạn")
             )
         }
+
+        // Add route
+        if (routePoints.isNotEmpty()) {
+            map.addPolyline(
+                PolylineOptions()
+                    .addAll(routePoints)
+                    .color(android.graphics.Color.parseColor("#4CAF50"))
+                    .width(8f)
+            )
+        }
+
+        // Add pickup marker
+        pickupLocation?.let { loc ->
+            val pickupBmp = createCircleMarkerBitmap("📍", Color(0xFFE53935), sizePx = 112)
+            map.addMarker(
+                MarkerOptions()
+                    .position(loc.toMapLibre())
+                    .icon(iconFactory.fromBitmap(pickupBmp))
+                    .title("Vị trí khách hàng")
+            )
+        }
     }
 
     // ── Render MapView ──────────────────────────────────────────────────────
@@ -182,4 +239,43 @@ fun DriverMapView(
         factory = { mapView },
         modifier = modifier,
     )
+}
+
+// ── Polyline Decoder ──────────────────────────────────────────────────────────
+private fun decodePolyline(encoded: String): List<LatLng> {
+    val poly = ArrayList<LatLng>()
+    var index = 0
+    val len = encoded.length
+    var lat = 0
+    var lng = 0
+
+    while (index < len) {
+        var b: Int
+        var shift = 0
+        var result = 0
+        do {
+            b = encoded[index++].code - 63
+            result = result or (b and 0x1f shl shift)
+            shift += 5
+        } while (b >= 0x20)
+        val dlat = if (result and 1 != 0) (result shr 1).inv() else result shr 1
+        lat += dlat
+
+        shift = 0
+        result = 0
+        do {
+            b = encoded[index++].code - 63
+            result = result or (b and 0x1f shl shift)
+            shift += 5
+        } while (b >= 0x20)
+        val dlng = if (result and 1 != 0) (result shr 1).inv() else result shr 1
+        lng += dlng
+
+        val p = LatLng(
+            lat.toDouble() / 1E5,
+            lng.toDouble() / 1E5
+        )
+        poly.add(p)
+    }
+    return poly
 }

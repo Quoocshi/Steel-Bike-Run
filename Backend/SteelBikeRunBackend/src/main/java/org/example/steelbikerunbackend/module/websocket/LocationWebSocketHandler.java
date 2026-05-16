@@ -7,6 +7,7 @@ import org.example.steelbikerunbackend.module.driver.service.DriverLocationServi
 import org.example.steelbikerunbackend.module.websocket.dto.LocationHeartbeat;
 import org.springframework.messaging.handler.annotation.MessageMapping;
 import org.springframework.messaging.simp.SimpMessageHeaderAccessor;
+import org.springframework.messaging.simp.SimpMessagingTemplate;
 import org.springframework.stereotype.Controller;
 
 import java.security.Principal;
@@ -38,6 +39,7 @@ import java.security.Principal;
 public class LocationWebSocketHandler {
 
     private final DriverLocationService driverLocationService;
+    private final SimpMessagingTemplate messagingTemplate;
 
     /**
      * Nhận heartbeat vị trí từ Driver qua WebSocket STOMP.
@@ -82,7 +84,11 @@ public class LocationWebSocketHandler {
         );
 
         try {
-            driverLocationService.updateLocation(driverEmail, request);
+            var response = driverLocationService.updateLocation(driverEmail, request);
+            
+            // Push ngược lại vị trí cho customer tracking qua kênh của driver
+            messagingTemplate.convertAndSend("/topic/driver/" + response.driverId() + "/location", heartbeat);
+            
             log.debug("[WS Location] Driver [{}] -> lat={}, lng={}",
                     driverEmail, heartbeat.getLatitude(), heartbeat.getLongitude());
         } catch (Exception e) {
