@@ -139,7 +139,7 @@ fun CustomerMapView(
         val trackedBmp = createCircleMarkerBitmap(DriverPrimary, "🚲")
 
         // H3 surge zone hexagons
-        val h3Core = try { com.uber.h3core.H3Core.newInstance() } catch (e: Exception) { null }
+        val h3Core = try { com.uber.h3core.H3Core.newInstance() } catch (e: Throwable) { null }
 
         surgeZones.forEach { zone ->
             val center = zone.center.toMapLibre()
@@ -148,7 +148,7 @@ fun CustomerMapView(
                     h3Core.cellToBoundary(zone.h3Index).map {
                         LatLng(it.lat, it.lng)
                     }
-                } catch (e: Exception) {
+                } catch (e: Throwable) {
                     hexagonVertices(center, radiusDeg = 0.002)
                 }
             } else {
