@@ -18,6 +18,7 @@ import com.example.steelbikerunmobile.domain.usecase.driver.SetDriverOnlineStatu
 import com.example.steelbikerunmobile.domain.usecase.driver.StreamLocationUseCase
 import com.example.steelbikerunmobile.domain.usecase.driver.SwitchToCustomerUseCase
 import com.example.steelbikerunmobile.domain.usecase.driver.SwitchToDriverUseCase
+import com.example.steelbikerunmobile.domain.usecase.trip.GetSurgeZonesUseCase
 import com.example.steelbikerunmobile.domain.usecase.trip.ObserveDriverTripRequestsUseCase
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.Job
@@ -134,6 +135,7 @@ class DriverHomeViewModel @Inject constructor(
     private val getNearbyDriversUseCase: GetNearbyDriversUseCase,
     private val observeCurrentH3IndexUseCase: ObserveCurrentH3IndexUseCase,
     private val observeDriverTripRequestsUseCase: ObserveDriverTripRequestsUseCase,
+    private val getSurgeZonesUseCase: GetSurgeZonesUseCase,
     private val tripRepository: TripRepository,
 ) : ViewModel() {
 
@@ -147,12 +149,21 @@ class DriverHomeViewModel @Inject constructor(
         loadProfile()
         refreshNearbyDrivers(DemoMapData.defaultPickup)
         observeH3Index()
+        fetchSurgeZones()
     }
 
     private fun observeH3Index() {
         h3IndexJob = viewModelScope.launch {
             observeCurrentH3IndexUseCase().collect { h3Index ->
                 _uiState.update { it.copy(currentH3Index = h3Index) }
+            }
+        }
+    }
+
+    private fun fetchSurgeZones() {
+        viewModelScope.launch {
+            getSurgeZonesUseCase().onSuccess { zones ->
+                _uiState.update { it.copy(surgeZones = zones) }
             }
         }
     }

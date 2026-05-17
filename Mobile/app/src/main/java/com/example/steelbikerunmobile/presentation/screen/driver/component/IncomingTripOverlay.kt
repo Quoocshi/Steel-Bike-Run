@@ -211,7 +211,8 @@ private fun TripCard(
                 horizontalArrangement = Arrangement.SpaceAround
             ) {
                 MetricPill(label = "Doanh thu ước tính", value = "${tripData.estimatedEarnings / 1000}K ₫", icon = "💰")
-                MetricPill(label = "Đến điểm đón", value = "${tripData.distanceToPickupKm} km", icon = "📍")
+                val distanceFmt = "%.1f".format(tripData.distanceToPickupKm)
+                MetricPill(label = "Đến điểm đón", value = "$distanceFmt km", icon = "📍")
                 MetricPill(label = "Chuyến đi", value = "${tripData.durationMinutes} phút", icon = "⏱")
             }
 
