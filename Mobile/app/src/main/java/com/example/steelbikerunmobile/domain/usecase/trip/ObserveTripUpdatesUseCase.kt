@@ -4,7 +4,7 @@ import com.example.steelbikerunmobile.data.remote.websocket.StompMessage
 import com.example.steelbikerunmobile.data.remote.websocket.StompWebSocketManager
 import com.google.gson.Gson
 import com.google.gson.JsonObject
-import com.mapbox.mapboxsdk.geometry.LatLng
+import com.example.steelbikerunmobile.domain.model.LatLng
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.filter
 import kotlinx.coroutines.flow.mapNotNull

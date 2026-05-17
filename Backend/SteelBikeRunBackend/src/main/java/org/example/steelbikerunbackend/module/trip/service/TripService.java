@@ -186,6 +186,7 @@ public class TripService {
                 Trip trip = findTripAndValidateDriver(driverEmail, tripId, TripStatus.ACCEPTED);
 
                 trip.setStatus(TripStatus.ARRIVED);
+                trip.setArrivedAt(LocalDateTime.now());
                 trip = tripRepository.save(trip);
 
                 log.info("[Trip] Trip {} ARRIVED at pickup", trip.getId());
@@ -367,6 +368,7 @@ public class TripService {
                                 trip.getDurationMinutes(),
                                 trip.getRequestedAt(),
                                 trip.getAcceptedAt(),
+                                trip.getArrivedAt(),
                                 trip.getStartedAt(),
                                 trip.getCompletedAt());
         }

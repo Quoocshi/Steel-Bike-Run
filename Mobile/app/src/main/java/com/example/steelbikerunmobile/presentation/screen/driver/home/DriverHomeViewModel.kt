@@ -6,6 +6,7 @@ import androidx.lifecycle.viewModelScope
 import com.example.steelbikerunmobile.data.repository.DemoMapData
 import com.example.steelbikerunmobile.domain.model.DriverProfile
 import com.example.steelbikerunmobile.domain.model.LatLng
+import com.example.steelbikerunmobile.domain.model.distanceTo
 import com.example.steelbikerunmobile.domain.model.NearbyDriver
 import com.example.steelbikerunmobile.domain.model.SurgeZone
 import com.example.steelbikerunmobile.domain.model.VehicleInfo
@@ -114,7 +115,12 @@ data class DriverHomeUiState(
     // Session stats
     val todayTrips: Int = 3,
     val todayEarnings: Long = 185_000L,
+    // Khoảng cách còn lại đến điểm đón (null = chưa có vị trí hoặc không trong trip)
+    val distanceToPickupMeters: Double? = null,
 )
+
+/** Khoảng cách tối đa (mét) để bấm "Đã đến điểm đón". */
+const val ARRIVED_THRESHOLD_METERS = 150.0
 
 @HiltViewModel
 class DriverHomeViewModel @Inject constructor(
@@ -241,11 +247,27 @@ class DriverHomeViewModel @Inject constructor(
 
     // ── Trip in progress ──────────────────────────────────────────────────────
 
-    /** Phase 1 → 2: Driver xác nhận đã đến điểm đón → gọi API /arrive. */
+    /** Phase 1 → 2: Driver xác nhận đã đến điểm đón → gọi API /arrive.
+     *  Guard: driver phải cách điểm đón ≤ ARRIVED_THRESHOLD_METERS (150m). */
     fun onArrivedAtPickup() {
         val active = _uiState.value.activeTrip ?: return
+        val currentLoc = _uiState.value.currentLocation
+
+        // Kiểm tra khoảng cách nếu có vị trí GPS
+        if (currentLoc != null) {
+            val pickupLoc = LatLng(active.pickupLat, active.pickupLng)
+            val distanceM = currentLoc.distanceTo(pickupLoc)
+            if (distanceM > ARRIVED_THRESHOLD_METERS) {
+                val remaining = distanceM.toInt()
+                _uiState.update {
+                    it.copy(errorMessage = "Bạn cách điểm đón ${remaining}m. Hãy đến trong vòng ${ARRIVED_THRESHOLD_METERS.toInt()}m để xác nhận.")
+                }
+                return
+            }
+        }
+
         viewModelScope.launch {
-            _uiState.update { it.copy(isLoading = true) }
+            _uiState.update { it.copy(isLoading = true, errorMessage = null) }
             tripRepository.arriveAtPickup(active.tripId).fold(
                 onSuccess = {
                     _uiState.update { state ->
@@ -334,8 +356,18 @@ class DriverHomeViewModel @Inject constructor(
             try {
                 streamLocationUseCase()
                     .collect { heartbeat ->
-                        _uiState.update { it.copy(currentLocation = heartbeat.location) }
-                        refreshNearbyDrivers(heartbeat.location)
+                        val loc = heartbeat.location
+                        // Tính khoảng cách đến điểm đón nếu đang ở phase GOING_TO_PICKUP
+                        val dist = _uiState.value.activeTrip
+                            ?.takeIf { it.executionPhase == TripExecutionPhase.GOING_TO_PICKUP }
+                            ?.let { trip -> loc.distanceTo(LatLng(trip.pickupLat, trip.pickupLng)) }
+                        _uiState.update {
+                            it.copy(
+                                currentLocation = loc,
+                                distanceToPickupMeters = dist,
+                            )
+                        }
+                        refreshNearbyDrivers(loc)
                     }
             } catch (e: SecurityException) {
                 // Permission bị thu hồi giữa chừng
