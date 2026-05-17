@@ -107,7 +107,9 @@ fun DestinationSearchSheet(
 
             LazyColumn(verticalArrangement = Arrangement.spacedBy(0.dp)) {
                 items(searchResults) { (name, latLng) ->
-                    val distanceKm = haversineDistanceKm(pickup, latLng)
+                    // Nhân road factor 1.35 để nhất quán với PricingService backend
+                    // (đường thực tế dài hơn đường chim bay ~35% do cua, vòng, một chiều)
+                    val distanceKm = haversineDistanceKm(pickup, latLng) * 1.35
                     DestinationRow(
                         name = name,
                         distanceKm = distanceKm,
