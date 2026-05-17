@@ -404,6 +404,7 @@ class CustomerHomeViewModel @Inject constructor(
     private fun startDriverLocationTracking(driverId: String) {
         driverLocationJob?.cancel()
         driverLocationJob = viewModelScope.launch {
+            // driverLocationMessages là suspend — đợi CONNECTED rồi mới subscribe
             observeTripUpdatesUseCase.driverLocationMessages(driverId).collect { loc ->
                 _uiState.update { it.copy(trackedDriverLocation = loc) }
             }

@@ -1,5 +1,6 @@
 package com.example.steelbikerunmobile.domain.usecase.trip
 
+import com.example.steelbikerunmobile.data.remote.websocket.ConnectionState
 import com.example.steelbikerunmobile.data.remote.websocket.StompMessage
 import com.example.steelbikerunmobile.data.remote.websocket.StompWebSocketManager
 import com.google.gson.Gson
@@ -7,6 +8,7 @@ import com.google.gson.JsonObject
 import com.example.steelbikerunmobile.domain.model.LatLng
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.filter
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.mapNotNull
 import javax.inject.Inject
 
@@ -89,12 +91,18 @@ class ObserveTripUpdatesUseCase @Inject constructor(
     }
 
     /**
-     * Flow nhận location cập nhật từ tài xế
+     * Subscribe vào kênh location của tài xế và trả về Flow toạ độ.
+     * Chờ đến khi WebSocket đã CONNECTED trước khi gửi SUBSCRIBE frame,
+     * tránh bỏ lỡ subscribe do gọi khi chưa kết nối.
      */
-    fun driverLocationMessages(driverId: String): Flow<LatLng> {
-        // Tự động subscribe nếu chưa
+    suspend fun driverLocationMessages(driverId: String): Flow<LatLng> {
+        // Đảm bảo STOMP đã connected (connect() là idempotent)
+        stompManager.connect()
+        // Đợi trạng thái CONNECTED nếu vẫn đang connecting
+        stompManager.connectionState.first { it == ConnectionState.CONNECTED }
+        // Giờ mới subscribe — đảm bảo frame không bị drop
         stompManager.subscribe("/topic/driver/$driverId/location")
-        
+
         return stompManager.incomingMessages
             .filter { it.destination == "/topic/driver/$driverId/location" }
             .mapNotNull { msg ->
