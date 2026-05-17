@@ -32,4 +32,11 @@ public interface TripRepository extends JpaRepository<Trip, UUID> {
     long countByPickupH3IndexAndStatus(
             @Param("h3Index") String h3Index,
             @Param("status") TripStatus status);
+
+    /**
+     * Lấy Trip kèm eager-load Customer — dùng trong MatchingEngine (@Scheduled thread)
+     * để tránh LazyInitializationException khi access trip.getCustomer().
+     */
+    @Query("SELECT t FROM Trip t JOIN FETCH t.customer WHERE t.id = :id")
+    java.util.Optional<Trip> findByIdWithCustomer(@Param("id") UUID id);
 }

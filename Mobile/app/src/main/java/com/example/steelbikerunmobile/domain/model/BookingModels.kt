@@ -1,11 +1,5 @@
 package com.example.steelbikerunmobile.domain.model
 
-data class SurgeZone(
-    val h3Index: String,
-    val center: LatLng,
-    val surgeMultiplier: Double
-)
-
 data class PriceEstimate(
     val basePrice: Double,
     val surgeMultiplier: Double,

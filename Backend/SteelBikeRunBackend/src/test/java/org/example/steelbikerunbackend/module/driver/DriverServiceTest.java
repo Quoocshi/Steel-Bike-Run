@@ -11,6 +11,7 @@ import org.example.steelbikerunbackend.module.driver.dto.SwitchDriverRequest;
 import org.example.steelbikerunbackend.module.driver.dto.SwitchRoleResponse;
 import org.example.steelbikerunbackend.module.driver.entity.Driver;
 import org.example.steelbikerunbackend.module.driver.repository.DriverRepository;
+import org.example.steelbikerunbackend.module.driver.service.DriverLocationService;
 import org.example.steelbikerunbackend.module.driver.service.DriverService;
 import org.example.steelbikerunbackend.module.user.cache.UserProfileCacheRepository;
 import org.example.steelbikerunbackend.module.user.entity.User;
@@ -48,6 +49,9 @@ class DriverServiceTest {
 
     @Mock
     private JwtUtil jwtUtil;
+
+    @Mock
+    private DriverLocationService driverLocationService;
 
     @InjectMocks
     private DriverService driverService;
@@ -123,7 +127,7 @@ class DriverServiceTest {
     }
 
     @Test
-    @DisplayName("switchToCustomer: Thành công")
+    @DisplayName("switchToCustomer: Thành công và xóa location khỏi Redis")
     void switchToCustomer_Success() {
         existingDriver.setOnline(true);
         when(userRepository.findByEmail(driverUser.getEmail())).thenReturn(Optional.of(driverUser));
@@ -136,10 +140,12 @@ class DriverServiceTest {
         assertThat(response.accessToken()).isEqualTo("mock-jwt-token");
         assertThat(response.driverProfile().isOnline()).isFalse();
         verify(userRepository).save(driverUser);
+        // Xác nhận location bị xóa khỏi Redis khi switch về Customer
+        verify(driverLocationService).removeDriverLocation(existingDriver.getId().toString());
     }
 
     @Test
-    @DisplayName("setOnlineStatus: Thành công cập nhật status")
+    @DisplayName("setOnlineStatus: Thành công cập nhật status online")
     void setOnlineStatus_Success() {
         when(userRepository.findByEmail(driverUser.getEmail())).thenReturn(Optional.of(driverUser));
         when(driverRepository.findByUserIdWithUser(driverUser.getId())).thenReturn(Optional.of(existingDriver));
@@ -149,6 +155,37 @@ class DriverServiceTest {
 
         assertThat(response.isOnline()).isTrue();
         verify(driverRepository).save(existingDriver);
+        // Khi bật online, không xóa Redis
+        verify(driverLocationService, never()).removeDriverLocation(any());
+    }
+
+    @Test
+    @DisplayName("setOnlineStatus: Xóa Redis location khi offline")
+    void setOnlineStatus_GoOffline_RemovesRedisLocation() {
+        existingDriver.setOnline(true); // hiện tại đang online
+        when(userRepository.findByEmail(driverUser.getEmail())).thenReturn(Optional.of(driverUser));
+        when(driverRepository.findByUserIdWithUser(driverUser.getId())).thenReturn(Optional.of(existingDriver));
+        when(driverRepository.save(any(Driver.class))).thenAnswer(i -> i.getArgument(0));
+
+        DriverProfileResponse response = driverService.setOnlineStatus(driverUser.getEmail(), new DriverStatusRequest(false));
+
+        assertThat(response.isOnline()).isFalse();
+        // Xác nhận location bị xóa khỏi Redis ngay khi offline
+        verify(driverLocationService).removeDriverLocation(existingDriver.getId().toString());
+    }
+
+    @Test
+    @DisplayName("setOnlineStatus: No-op khi trạng thái đã khớp")
+    void setOnlineStatus_NoOp_WhenSameStatus() {
+        // existingDriver đang offline, request offline -> no-op
+        when(userRepository.findByEmail(driverUser.getEmail())).thenReturn(Optional.of(driverUser));
+        when(driverRepository.findByUserIdWithUser(driverUser.getId())).thenReturn(Optional.of(existingDriver));
+
+        DriverProfileResponse response = driverService.setOnlineStatus(driverUser.getEmail(), new DriverStatusRequest(false));
+
+        assertThat(response.isOnline()).isFalse();
+        verify(driverRepository, never()).save(any());
+        verify(driverLocationService, never()).removeDriverLocation(any());
     }
 
     @Test

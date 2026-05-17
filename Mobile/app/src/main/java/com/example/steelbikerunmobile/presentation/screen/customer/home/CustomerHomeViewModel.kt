@@ -7,7 +7,6 @@ import com.example.steelbikerunmobile.domain.model.BookingDraft
 import com.example.steelbikerunmobile.domain.model.LatLng
 import com.example.steelbikerunmobile.domain.model.NearbyDriver
 import com.example.steelbikerunmobile.domain.model.PriceEstimate
-import com.example.steelbikerunmobile.domain.model.SurgeZone
 import com.example.steelbikerunmobile.domain.model.VehicleInfo
 import com.example.steelbikerunmobile.domain.usecase.driver.GetNearbyDriversUseCase
 import com.example.steelbikerunmobile.domain.usecase.driver.SwitchToDriverUseCase
@@ -15,7 +14,6 @@ import retrofit2.HttpException
 import com.example.steelbikerunmobile.data.location.LocationStreamProvider
 import com.example.steelbikerunmobile.domain.usecase.trip.CreateTripUseCase
 import com.example.steelbikerunmobile.domain.usecase.trip.GetPriceEstimateUseCase
-import com.example.steelbikerunmobile.domain.usecase.trip.GetSurgeZonesUseCase
 import com.example.steelbikerunmobile.domain.usecase.trip.ObserveTripUpdatesUseCase
 import com.example.steelbikerunmobile.domain.usecase.trip.ReverseGeocodeUseCase
 import com.example.steelbikerunmobile.domain.usecase.trip.SearchDestinationUseCase
@@ -101,7 +99,6 @@ data class CustomerHomeUiState(
     val searchResults: List<Pair<String, LatLng>> = emptyList(),
     // Map data
     val nearbyDrivers: List<NearbyDriver> = DemoMapData.drivers,
-    val surgeZones: List<SurgeZone> = DemoMapData.surgeZones,
     // Booking
     val estimate: PriceEstimate? = null,
     val paymentMethod: PaymentMethod = PaymentMethod.CASH,
@@ -130,7 +127,6 @@ class CustomerHomeViewModel @Inject constructor(
     private val getNearbyDriversUseCase: GetNearbyDriversUseCase,
     private val getPriceEstimateUseCase: GetPriceEstimateUseCase,
     private val createTripUseCase: CreateTripUseCase,
-    private val getSurgeZonesUseCase: GetSurgeZonesUseCase,
     private val switchToDriverUseCase: SwitchToDriverUseCase,
     private val observeTripUpdatesUseCase: ObserveTripUpdatesUseCase,
     private val searchDestinationUseCase: SearchDestinationUseCase,
@@ -157,7 +153,6 @@ class CustomerHomeViewModel @Inject constructor(
         startLocationTracking()
         refreshNearbyDrivers()
         startNearbyDriverPolling()
-        fetchSurgeZones()
         // Load customer ID từ DataStore ngay khi khởi tạo
         viewModelScope.launch {
             authDataStore.authSessionFlow.collect { session ->
@@ -469,22 +464,6 @@ class CustomerHomeViewModel @Inject constructor(
                 if (step == CustomerFlowStep.HOME || step == CustomerFlowStep.TRIP_PREVIEW) {
                     refreshNearbyDrivers()
                 }
-            }
-        }
-    }
-
-    /**
-     * Fetch surge zones từ backend mỗi 30 giây.
-     * Chạy liên tục trong background để hexagon map layer luôn cập nhật theo thực tế.
-     * Nếu lỗi (offline/server down) → bỏ qua và giữ data cũ, thử lại lần tiếp theo.
-     */
-    private fun fetchSurgeZones() {
-        viewModelScope.launch {
-            while (isActive) {
-                getSurgeZonesUseCase().onSuccess { zones ->
-                    _uiState.update { it.copy(surgeZones = zones) }
-                }
-                delay(30_000L)
             }
         }
     }

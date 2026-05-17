@@ -123,7 +123,6 @@ fun DriverHomeScreen(
         DriverMapView(
             driverLocation = uiState.currentLocation,
             pickupLocation = pickupLocation,
-            surgeZones = uiState.surgeZones,
             modifier = Modifier.fillMaxSize()
         )
 
