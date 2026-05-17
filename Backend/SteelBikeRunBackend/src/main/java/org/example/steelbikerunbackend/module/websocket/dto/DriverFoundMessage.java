@@ -16,6 +16,8 @@ public class DriverFoundMessage {
     private String tripId;
     private String driverId;
     private String driverName;
+    private String driverPhone;
+    private int driverTotalTrips;
 
     // Thông tin xe
     private String vehiclePlate;

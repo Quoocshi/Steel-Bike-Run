@@ -124,6 +124,20 @@ fun DriverTrackingCard(
                         fontWeight = FontWeight.Bold,
                         color = MaterialTheme.colorScheme.primary,
                     )
+                    if (driver.phone.isNotBlank()) {
+                        Text(
+                            text = "📞 ${driver.phone}",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+                    if (driver.totalTrips > 0) {
+                        Text(
+                            text = "🛵 ${driver.totalTrips} chuyến",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
                 }
 
                 // Action buttons

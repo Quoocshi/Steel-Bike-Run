@@ -57,7 +57,8 @@ data class TrackedDriverInfo(
     val rating: Float,
     val vehicleModel: String,
     val vehicleColor: String,
-    val phone: String = "+84 912 345 678",
+    val phone: String = "",
+    val totalTrips: Int = 0,
 )
 
 /** Receipt data populated when the trip transitions to COMPLETED. */
@@ -380,6 +381,8 @@ class CustomerHomeViewModel @Inject constructor(
                             rating = driver.driverRating,
                             vehicleModel = driver.vehicleModel.ifBlank { "Xe máy" },
                             vehicleColor = driver.vehicleColor.ifBlank { "--" },
+                            phone = driver.driverPhone,
+                            totalTrips = driver.driverTotalTrips,
                         ),
                         tripStatusMessage = "Tài xế đang đến điểm đón (${driver.etaMinutes} phút)",
                     )
