@@ -50,10 +50,13 @@ import java.util.UUID;
 public class MatchingEngine {
 
     // ── Config ────────────────────────────────────────────────────────────────
-    private static final int    ROUND_TIMEOUT_SECONDS  = 20;
+    private static final int    ROUND_TIMEOUT_SECONDS  = 10;  // giảm 20→10s để retry nhanh hơn
     private static final int    GLOBAL_TIMEOUT_MINUTES = 5;
     private static final int    DRIVERS_PER_ROUND      = 3;
     private static final int    SEARCH_KRING           = 13;
+    /** Thời gian retry ngắn (5s) khi round 1 chưa có driver nào — driver
+     *  có thể chưa gửi heartbeat đầu tiên, cần check lại sớm hơn round timeout thông thường. */
+    private static final int    NO_DRIVER_QUICK_RETRY_SECONDS = 5;
 
     // ── Dependencies ──────────────────────────────────────────────────────────
     private final MatchingQueue           matchingQueue;
@@ -153,15 +156,20 @@ public class MatchingEngine {
 
         if (freshDrivers.isEmpty()) {
             if (state.getLastBroadcastAt() == null) {
-                // Round 1 nhưng không có ai gần — vẫn cập nhật để tiếp tục retry
-                log.warn("[MatchingEngine] Trip {} round 1 — không có driver nào gần. Retry sau {}s.",
-                        trip.getId(), ROUND_TIMEOUT_SECONDS);
-                state.setLastBroadcastAt(Instant.now());
+                // Round 1 nhưng không có ai gần — driver có thể chưa kịp gửi heartbeat.
+                // Dùng NO_DRIVER_QUICK_RETRY_SECONDS (5s) thay vì full ROUND_TIMEOUT_SECONDS
+                // để check lại sớm hơn mà không tăng độ trễ phịm driver.
+                Instant quickRetry = Instant.now().minusSeconds(
+                        ROUND_TIMEOUT_SECONDS - NO_DRIVER_QUICK_RETRY_SECONDS);
+                state.setLastBroadcastAt(quickRetry);
                 state.setRound(nextRound);
                 matchingQueue.updateState(state);
 
                 // Báo customer biết đang tìm
                 notifyCustomerSearching(state, "Đang tìm tài xế trong khu vực...");
+
+                log.warn("[MatchingEngine] Trip {} round 1 — không có driver nào gần. Retry nhanh sau {}s.",
+                        trip.getId(), NO_DRIVER_QUICK_RETRY_SECONDS);
             } else {
                 log.warn("[MatchingEngine] Trip {} round {} — không còn driver mới nào. Retry sau {}s.",
                         trip.getId(), nextRound, ROUND_TIMEOUT_SECONDS);

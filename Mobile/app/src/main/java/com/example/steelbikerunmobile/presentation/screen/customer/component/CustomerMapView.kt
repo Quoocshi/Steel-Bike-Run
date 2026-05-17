@@ -21,7 +21,6 @@ import androidx.lifecycle.LifecycleEventObserver
 import com.example.steelbikerunmobile.BuildConfig
 import com.example.steelbikerunmobile.domain.model.LatLng as DomainLatLng
 import com.example.steelbikerunmobile.domain.model.NearbyDriver
-import com.example.steelbikerunmobile.domain.model.SurgeZone
 import com.example.steelbikerunmobile.presentation.screen.customer.home.CustomerFlowStep
 import com.example.steelbikerunmobile.presentation.theme.CustomerPrimary
 import com.example.steelbikerunmobile.presentation.theme.CustomerSecondary
@@ -37,7 +36,6 @@ import org.maplibre.android.geometry.LatLng
 import org.maplibre.android.maps.MapView
 import org.maplibre.android.maps.MapLibreMap
 import org.maplibre.android.maps.Style
-import kotlin.math.PI
 import kotlin.math.cos
 import kotlin.math.sin
 
@@ -53,7 +51,6 @@ fun CustomerMapView(
     pickup: DomainLatLng,
     destination: DomainLatLng?,
     nearbyDrivers: List<NearbyDriver>,
-    surgeZones: List<SurgeZone>,
     trackedDriverLocation: DomainLatLng?,
     flowStep: CustomerFlowStep,
     recenterTrigger: Long = 0L,
@@ -126,7 +123,7 @@ fun CustomerMapView(
 
     // ── Markers & overlays ──────────────────────────────────────────────────
     LaunchedEffect(
-        pickup, destination, nearbyDrivers, surgeZones,
+        pickup, destination, nearbyDrivers,
         trackedDriverLocation, flowStep, mapRef
     ) {
         val map = mapRef ?: return@LaunchedEffect
@@ -137,46 +134,6 @@ fun CustomerMapView(
         val destBmp   = createCircleMarkerBitmap(ErrorRed, "🏁")
         val driverBmp = createCircleMarkerBitmap(CustomerSecondary, "🚲")
         val trackedBmp = createCircleMarkerBitmap(DriverPrimary, "🚲")
-
-        // H3 hexagon map layer:
-        // - Tất cả ô nền: trắng mờ (0x18FFFFFF) để thấy bản đồ phía dưới
-        // - Ô surge > 1.0: xanh lá đậm dần theo mức
-        val h3Core = try { com.uber.h3core.H3Core.newInstance() } catch (e: Throwable) { null }
-
-        surgeZones.forEach { zone ->
-            val center = zone.center.toMapLibre()
-            val vertices = if (h3Core != null && zone.h3Index.startsWith("8")) {
-                try {
-                    h3Core.cellToBoundary(zone.h3Index).map {
-                        LatLng(it.lat, it.lng)
-                    }
-                } catch (e: Throwable) {
-                    hexagonVertices(center, radiusDeg = 0.002)
-                }
-            } else {
-                hexagonVertices(center, radiusDeg = 0.002)
-            }
-
-            // Màu nền: trắng mờ mờ (1.0 = bình thường)
-            // Xanh lá đậm dần: 1.0→white, 1.5→light green, 2.0+→deep green
-            val (fillColor, strokeColor) = when {
-                zone.surgeMultiplier >= 2.0 -> // đỏ cam — cực kỳ khan hiếm
-                    Pair(Color(0x9916A085), Color(0xCC1ABC9C))
-                zone.surgeMultiplier >= 1.5 -> // xanh lá đậm — cao
-                    Pair(Color(0x7027AE60), Color(0xAA2ECC71))
-                zone.surgeMultiplier > 1.0  -> // xanh lá nhạt — surge nhẹ
-                    Pair(Color(0x5052BE80), Color(0x8058D68D))
-                else                        -> // trắng mờ — bình thường
-                    Pair(Color(0x18FFFFFF), Color(0x30FFFFFF))
-            }
-
-            map.addPolygon(
-                PolygonOptions()
-                    .addAll(vertices)
-                    .fillColor(fillColor.toArgb())
-                    .strokeColor(strokeColor.toArgb())
-            )
-        }
 
         // Nearby driver markers
         if (flowStep == CustomerFlowStep.HOME || flowStep == CustomerFlowStep.SEARCHING) {
@@ -260,15 +217,3 @@ private fun createCircleMarkerBitmap(bgColor: Color, emoji: String): Bitmap {
     return bitmap
 }
 
-/** Compute 6 vertices of a flat-top hexagon around a MapLibre center. */
-private fun hexagonVertices(center: LatLng, radiusDeg: Double): List<LatLng> {
-    val cosLat = cos(Math.toRadians(center.latitude))
-    return (0 until 6).map { i ->
-        val angleDeg = 60.0 * i - 30.0
-        val angleRad = angleDeg * PI / 180.0
-        LatLng(
-            center.latitude  + radiusDeg * cos(angleRad),
-            center.longitude + radiusDeg * sin(angleRad) / cosLat,
-        )
-    }
-}

@@ -21,11 +21,9 @@ import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import com.example.steelbikerunmobile.BuildConfig
 import com.example.steelbikerunmobile.domain.model.LatLng as DomainLatLng
-import com.example.steelbikerunmobile.domain.model.SurgeZone
 import org.maplibre.android.MapLibre
 import org.maplibre.android.annotations.IconFactory
 import org.maplibre.android.annotations.MarkerOptions
-import org.maplibre.android.annotations.PolygonOptions
 import org.maplibre.android.camera.CameraPosition
 import org.maplibre.android.camera.CameraUpdateFactory
 import org.maplibre.android.geometry.LatLng
@@ -47,24 +45,6 @@ private val STYLE_URL: String
 
 // ── Coordinate helpers ────────────────────────────────────────────────────────
 private fun DomainLatLng.toMapLibre() = LatLng(latitude, longitude)
-
-/** Six vertices of a flat-top hexagon centred at [center] with given [radiusDeg]. */
-private fun hexagonVertices(center: LatLng, radiusDeg: Double): List<LatLng> =
-    (0..5).map { i ->
-        val angleDeg = 60.0 * i - 30.0
-        val rad = Math.toRadians(angleDeg)
-        LatLng(
-            center.latitude + radiusDeg * cos(rad),
-            center.longitude + radiusDeg * sin(rad) / cos(Math.toRadians(center.latitude))
-        )
-    }
-
-/** Surge-level → semi-transparent red/orange fill */
-private fun surgeColor(multiplier: Double): Color {
-    val alpha = (0.25f + ((multiplier - 1.0) * 0.15f).toFloat()).coerceIn(0.25f, 0.60f)
-    return if (multiplier >= 1.8) Color(1f, 0.2f, 0.05f, alpha) // red
-    else Color(0.90f, 0.45f, 0.05f, alpha)                       // orange
-}
 
 // ── Marker bitmap helpers ─────────────────────────────────────────────────────
 private fun createCircleMarkerBitmap(emoji: String, bgColor: Color, sizePx: Int = 96): Bitmap {
@@ -93,7 +73,6 @@ private fun createCircleMarkerBitmap(emoji: String, bgColor: Color, sizePx: Int 
 fun DriverMapView(
     driverLocation: DomainLatLng?,
     pickupLocation: DomainLatLng?,
-    surgeZones: List<SurgeZone>,
     modifier: Modifier = Modifier
 ) {
     val context = LocalContext.current
@@ -179,52 +158,12 @@ fun DriverMapView(
     }
 
     // ── Markers & overlays ──────────────────────────────────────────────────
-    LaunchedEffect(driverLocation, pickupLocation, surgeZones, routePoints, mapRef) {
+    LaunchedEffect(driverLocation, pickupLocation, routePoints, mapRef) {
         val map = mapRef ?: return@LaunchedEffect
         map.clear()
 
         val iconFactory = IconFactory.getInstance(context)
         val driverBmp = createCircleMarkerBitmap("🏍", Color(0xFFE67E22), sizePx = 112)
-
-        // H3 hexagon map layer:
-        // - Tất cả ô nền: trắng mờ (0x18FFFFFF) để thấy bản đồ phía dưới
-        // - Ô surge > 1.0: xanh lá đậm dần theo mức
-        val h3Core = try { com.uber.h3core.H3Core.newInstance() } catch (e: Throwable) { null }
-
-        surgeZones.forEach { zone ->
-            val center = LatLng(zone.center.latitude, zone.center.longitude)
-            val vertices = if (h3Core != null && zone.h3Index.startsWith("8")) {
-                try {
-                    h3Core.cellToBoundary(zone.h3Index).map {
-                        LatLng(it.lat, it.lng)
-                    }
-                } catch (e: Throwable) {
-                    hexagonVertices(center, radiusDeg = 0.002)
-                }
-            } else {
-                hexagonVertices(center, radiusDeg = 0.002)
-            }
-
-            // Màu nền: trắng mờ mờ (1.0 = bình thường)
-            // Xanh lá đậm dần: 1.0→white, 1.5→light green, 2.0+→deep green
-            val (fillColor, strokeColor) = when {
-                zone.surgeMultiplier >= 2.0 -> // đỏ cam — cực kỳ khan hiếm
-                    Pair(Color(0x9916A085), Color(0xCC1ABC9C))
-                zone.surgeMultiplier >= 1.5 -> // xanh lá đậm — cao
-                    Pair(Color(0x7027AE60), Color(0xAA2ECC71))
-                zone.surgeMultiplier > 1.0  -> // xanh lá nhạt — surge nhẹ
-                    Pair(Color(0x5052BE80), Color(0x8058D68D))
-                else                        -> // trắng mờ — bình thường
-                    Pair(Color(0x18FFFFFF), Color(0x30FFFFFF))
-            }
-
-            map.addPolygon(
-                PolygonOptions()
-                    .addAll(vertices)
-                    .fillColor(fillColor.toArgb())
-                    .strokeColor(strokeColor.toArgb())
-            )
-        }
 
         // Driver's own location marker
         driverLocation?.let { loc ->

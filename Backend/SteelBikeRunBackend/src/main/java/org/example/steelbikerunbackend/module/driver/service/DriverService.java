@@ -16,6 +16,7 @@ import org.example.steelbikerunbackend.module.driver.entity.Driver;
 import org.example.steelbikerunbackend.module.driver.repository.DriverRepository;
 import org.example.steelbikerunbackend.module.user.entity.User;
 import org.example.steelbikerunbackend.module.user.repository.UserRepository;
+import org.springframework.context.annotation.Lazy;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -31,6 +32,8 @@ public class DriverService {
         private final DriverProfileCacheRepository cacheRepository;
         private final UserProfileCacheRepository userProfileCacheRepository;
         private final JwtUtil jwtUtil;
+        @Lazy
+        private final DriverLocationService driverLocationService;
 
         /**
          * Chuyển user sang chế độ Driver.
@@ -154,6 +157,8 @@ public class DriverService {
                         driver = driverRepository.save(driver);
                         cacheRepository.evict(userEmail);
                 }
+                // Xóa location khỏi Redis — tránh stale entry xuất hiện trong findNearbyDrivers
+                driverLocationService.removeDriverLocation(driver.getId().toString());
 
                 // Cập nhật role về CUSTOMER
                 user.setRole(UserRole.CUSTOMER);
@@ -195,6 +200,14 @@ public class DriverService {
                 driver.setOnline(desired);
                 driver = driverRepository.save(driver);
                 cacheRepository.evict(userEmail);
+
+                // Khi driver offline: xóa location khỏi Redis ngay lập tức.
+                // Nếu không xóa, Redis HASH vẫn còn TTL 60s với isOnline=true
+                // -> MatchingEngine vẫn tìm thấy driver này dù đã offline.
+                if (!desired) {
+                        driverLocationService.removeDriverLocation(driver.getId().toString());
+                        log.info("Driver [{}] location removed from Redis (went offline)", user.getEmail());
+                }
 
                 log.info("Driver [{}] status updated -> {}", user.getEmail(),
                                 desired ? "Online" : "Offline");
