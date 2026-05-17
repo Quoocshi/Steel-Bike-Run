@@ -9,6 +9,7 @@ import org.example.steelbikerunbackend.common.response.ApiResponse;
 import org.example.steelbikerunbackend.module.trip.dto.CreateTripRequest;
 import org.example.steelbikerunbackend.module.trip.dto.PriceEstimateRequest;
 import org.example.steelbikerunbackend.module.trip.dto.PriceEstimateResponse;
+import org.example.steelbikerunbackend.module.trip.dto.SurgeZoneDto;
 import org.example.steelbikerunbackend.module.trip.dto.TripResponse;
 import org.example.steelbikerunbackend.module.trip.service.PricingService;
 import org.example.steelbikerunbackend.module.trip.service.TripService;
@@ -169,6 +170,18 @@ public class TripController {
     public ResponseEntity<ApiResponse<TripResponse>> getTrip(@PathVariable UUID id) {
         TripResponse result = tripService.getTrip(id);
         return ResponseEntity.ok(ApiResponse.success(result));
+    }
+
+    // -------------------------------------------------------------------------
+    // SURGE ZONES (Public — mobile map layer)
+    // -------------------------------------------------------------------------
+
+    @Operation(summary = "Lấy danh sách vùng surge pricing",
+            description = "Trả về tất cả ô H3 đang có surge multiplier > 1.0 để mobile vẽ lên bản đồ. Không yêu cầu xác thực.")
+    @GetMapping("/surge-zones")
+    public ResponseEntity<ApiResponse<List<SurgeZoneDto>>> getSurgeZones() {
+        List<SurgeZoneDto> zones = pricingService.getAllSurgeZones();
+        return ResponseEntity.ok(ApiResponse.success(zones));
     }
 
     // -------------------------------------------------------------------------

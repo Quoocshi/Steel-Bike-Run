@@ -1,5 +1,13 @@
 package com.example.steelbikerunmobile.data.remote.dto
 
+data class SurgeZoneResponseDto(
+    val h3Index: String,
+    val centerLat: Double,
+    val centerLng: Double,
+    val surgeMultiplier: Float,
+    val activeDrivers: Int,
+)
+
 data class PriceEstimateRequestDto(
     val pickupLat: Double,
     val pickupLng: Double,
