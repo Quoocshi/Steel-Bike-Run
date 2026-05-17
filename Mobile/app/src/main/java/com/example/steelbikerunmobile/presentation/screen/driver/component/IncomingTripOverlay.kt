@@ -222,6 +222,14 @@ private fun TripCard(
             // Route
             RouteInfo(pickup = tripData.pickupAddress, destination = tripData.destinationAddress)
 
+            // Customer info
+            if (tripData.customerName.isNotBlank() || tripData.customerPhone.isNotBlank()) {
+                Spacer(Modifier.height(16.dp))
+                HorizontalDivider(color = Color.White.copy(alpha = 0.08f))
+                Spacer(Modifier.height(14.dp))
+                CustomerInfoRow(name = tripData.customerName, phone = tripData.customerPhone)
+            }
+
             Spacer(Modifier.height(28.dp))
 
             // Swipe-to-accept
@@ -303,6 +311,52 @@ private fun RouteInfo(pickup: String, destination: String) {
             Icon(Icons.Default.Star, contentDescription = null, tint = DriverOrange, modifier = Modifier.size(18.dp))
             Spacer(Modifier.width(8.dp))
             Text(destination, style = MaterialTheme.typography.bodyMedium.copy(color = Color.White.copy(alpha = 0.8f)), maxLines = 1)
+        }
+    }
+}
+
+// ── Customer info row ─────────────────────────────────────────────────────────
+@Composable
+private fun CustomerInfoRow(name: String, phone: String) {
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(14.dp)
+    ) {
+        // Avatar circle
+        Box(
+            modifier = Modifier
+                .size(42.dp)
+                .clip(CircleShape)
+                .background(DriverOrange.copy(alpha = 0.18f)),
+            contentAlignment = Alignment.Center
+        ) {
+            Text(
+                text = if (name.isNotBlank()) name.first().uppercaseChar().toString() else "?",
+                style = MaterialTheme.typography.titleMedium.copy(
+                    fontWeight = FontWeight.Bold,
+                    color = DriverOrange
+                )
+            )
+        }
+        Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+            if (name.isNotBlank()) {
+                Text(
+                    text = name,
+                    style = MaterialTheme.typography.bodyMedium.copy(
+                        fontWeight = FontWeight.SemiBold,
+                        color = Color.White
+                    )
+                )
+            }
+            if (phone.isNotBlank()) {
+                Text(
+                    text = "📞  $phone",
+                    style = MaterialTheme.typography.bodySmall.copy(
+                        color = Color.White.copy(alpha = 0.6f)
+                    )
+                )
+            }
         }
     }
 }

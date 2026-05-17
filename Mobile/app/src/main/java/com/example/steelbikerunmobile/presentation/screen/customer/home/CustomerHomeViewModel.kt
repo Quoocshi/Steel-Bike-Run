@@ -26,6 +26,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import javax.inject.Inject
 import kotlin.math.asin
@@ -56,7 +57,8 @@ data class TrackedDriverInfo(
     val rating: Float,
     val vehicleModel: String,
     val vehicleColor: String,
-    val phone: String = "+84 912 345 678",
+    val phone: String = "",
+    val totalTrips: Int = 0,
 )
 
 /** Receipt data populated when the trip transitions to COMPLETED. */
@@ -144,6 +146,7 @@ class CustomerHomeViewModel @Inject constructor(
     private var locationJob: Job? = null
     private var searchJob: Job? = null
     private var driverLocationJob: Job? = null
+    private var nearbyDriverPollingJob: Job? = null
     private var currentTripId: String? = null
     /** Customer ID lưu từ DataStore — dùng để subscribe đúng kênh /topic/trip/{customerId}. */
     private var currentCustomerId: String? = null
@@ -151,6 +154,7 @@ class CustomerHomeViewModel @Inject constructor(
     init {
         startLocationTracking()
         refreshNearbyDrivers()
+        startNearbyDriverPolling()
         // Load customer ID từ DataStore ngay khi khởi tạo
         viewModelScope.launch {
             authDataStore.authSessionFlow.collect { session ->
@@ -204,7 +208,7 @@ class CustomerHomeViewModel @Inject constructor(
                 flowStep = CustomerFlowStep.TRIP_PREVIEW,
                 estimate = null,
                 isLoading = true,
-                pickupAddress = "─Éang lß║Ñy ─æß╗ïa chß╗ë...",
+                pickupAddress = "Đang lấy địa chỉ...",
             )
         }
         fetchEstimate(destination)
@@ -377,6 +381,8 @@ class CustomerHomeViewModel @Inject constructor(
                             rating = driver.driverRating,
                             vehicleModel = driver.vehicleModel.ifBlank { "Xe máy" },
                             vehicleColor = driver.vehicleColor.ifBlank { "--" },
+                            phone = driver.driverPhone,
+                            totalTrips = driver.driverTotalTrips,
                         ),
                         tripStatusMessage = "Tài xế đang đến điểm đón (${driver.etaMinutes} phút)",
                     )
@@ -438,6 +444,23 @@ class CustomerHomeViewModel @Inject constructor(
         viewModelScope.launch {
             getNearbyDriversUseCase(_uiState.value.pickup).onSuccess { drivers ->
                 _uiState.update { it.copy(nearbyDrivers = drivers) }
+            }
+        }
+    }
+
+    /**
+     * Poll danh sách driver gần đó mỗi 30 giây.
+     * Chỉ chạy khi customer đang ở HOME hoặc TRIP_PREVIEW (không spam khi đang trong chuyến).
+     */
+    private fun startNearbyDriverPolling() {
+        nearbyDriverPollingJob?.cancel()
+        nearbyDriverPollingJob = viewModelScope.launch {
+            while (isActive) {
+                delay(30_000L)
+                val step = _uiState.value.flowStep
+                if (step == CustomerFlowStep.HOME || step == CustomerFlowStep.TRIP_PREVIEW) {
+                    refreshNearbyDrivers()
+                }
             }
         }
     }

@@ -18,6 +18,7 @@ public class TripRequestMessage {
     private String tripId;
     private String customerId;
     private String customerName;
+    private String customerPhone;
 
     // Điểm đón
     private double pickupLat;
