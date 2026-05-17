@@ -51,6 +51,8 @@ enum class TripExecutionPhase {
 // ── Incoming trip payload (from WebSocket / mock) ─────────────────────────────
 data class IncomingTripData(
     val tripId: String = "TRIP-HCM-001",
+    val customerName: String = "",
+    val customerPhone: String = "",
     val pickupAddress: String = "Bến Thành Market, Q.1",
     val destinationAddress: String = "Sân bay Tân Sơn Nhất, Q.Tân Bình",
     val pickupLat: Double = 10.7727,
@@ -523,6 +525,8 @@ class DriverHomeViewModel @Inject constructor(
                     it.copy(
                         incomingTrip = IncomingTripData(
                             tripId = request.tripId,
+                            customerName = request.customerName,
+                            customerPhone = request.customerPhone,
                             pickupAddress = "${String.format("%.4f", request.pickupLat)}, ${String.format("%.4f", request.pickupLng)}",
                             destinationAddress = request.destAddress.ifBlank { "\u0110i\u1ec3m \u0111\u1ebfn" },
                             pickupLat = request.pickupLat,

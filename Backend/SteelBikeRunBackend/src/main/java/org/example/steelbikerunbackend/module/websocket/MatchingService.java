@@ -70,6 +70,7 @@ public class MatchingService {
                                         .tripId(trip.getId().toString())
                                         .customerId(trip.getCustomer().getId().toString())
                                         .customerName(trip.getCustomer().getFullName())
+                                        .customerPhone(trip.getCustomer().getPhone())
                                         .pickupLat(trip.getPickupLat())
                                         .pickupLng(trip.getPickupLng())
                                         .pickupH3Index(trip.getPickupH3Index())
