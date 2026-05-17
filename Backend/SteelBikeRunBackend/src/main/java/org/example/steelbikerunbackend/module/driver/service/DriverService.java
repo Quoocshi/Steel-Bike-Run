@@ -192,8 +192,16 @@ public class DriverService {
 
                 boolean desired = request.isOnline();
                 if (driver.isOnline() == desired) {
-                        log.info("Driver [{}] status already {}, no-op", user.getEmail(),
-                                        desired ? "Online" : "Offline");
+                        if (desired) {
+                                // Driver is reconnecting (app restart) while DB already shows online.
+                                // Purge any stale Redis location entry so the next GPS heartbeat
+                                // (within ~3 s) writes a fresh one, making MatchingEngine find them.
+                                driverLocationService.removeDriverLocation(driver.getId().toString());
+                                log.info("Driver [{}] reconnect detected – cleared stale Redis entry, awaiting fresh heartbeat",
+                                                user.getEmail());
+                        } else {
+                                log.info("Driver [{}] status already Offline, no-op", user.getEmail());
+                        }
                         return DriverProfileResponse.from(driver, false);
                 }
 
