@@ -56,6 +56,7 @@ import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.steelbikerunmobile.presentation.screen.driver.home.ActiveTripData
+import com.example.steelbikerunmobile.presentation.screen.driver.home.ARRIVED_THRESHOLD_METERS
 import com.example.steelbikerunmobile.presentation.screen.driver.home.TripExecutionPhase
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
@@ -73,6 +74,8 @@ fun TripInProgressOverlay(
     onStartTrip: () -> Unit,
     onSwipeToComplete: () -> Unit,
     isLoading: Boolean = false,
+    /** Khoảng cách (mét) đến điểm đón, null nếu chưa có GPS. */
+    distanceToPickupMeters: Double? = null,
     modifier: Modifier = Modifier,
 ) {
     // Elapsed time ticker — chỉ tính khi đang IN_PROGRESS
@@ -214,20 +217,65 @@ fun TripInProgressOverlay(
                 } else {
                     when (phase) {
                         TripExecutionPhase.GOING_TO_PICKUP -> {
-                            // Phase 1: Nút "Đã đến điểm đón" — màu xanh lá
-                            Button(
-                                onClick = onArrivedAtPickup,
-                                modifier = Modifier.fillMaxWidth().height(56.dp),
-                                shape = RoundedCornerShape(16.dp),
-                                colors = ButtonDefaults.buttonColors(containerColor = ActiveGreen),
-                            ) {
-                                Text(
-                                    "📍  Đã đến điểm đón",
-                                    style = MaterialTheme.typography.titleMedium.copy(
-                                        fontWeight = FontWeight.Bold,
-                                        color = Color.White
+                            // Phase 1: Nút "Đã đến điểm đón" — enable chỉ khi ≤ ARRIVED_THRESHOLD_METERS
+                            val canArrive = distanceToPickupMeters == null ||
+                                    distanceToPickupMeters <= ARRIVED_THRESHOLD_METERS
+
+                            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                                // Chip hiển thị khoảng cách còn lại
+                                if (distanceToPickupMeters != null) {
+                                    val distText = if (distanceToPickupMeters < 1000)
+                                        "${distanceToPickupMeters.toInt()}m"
+                                    else "%.1fkm".format(distanceToPickupMeters / 1000)
+                                    Row(
+                                        Modifier
+                                            .align(Alignment.CenterHorizontally)
+                                            .background(
+                                                if (canArrive) ActiveGreen.copy(alpha = 0.15f)
+                                                else Color(0xFFE74C3C).copy(alpha = 0.15f),
+                                                RoundedCornerShape(20.dp)
+                                            )
+                                            .padding(horizontal = 12.dp, vertical = 4.dp),
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.spacedBy(4.dp),
+                                    ) {
+                                        Text(
+                                            if (canArrive) "✅" else "📏",
+                                            fontSize = 12.sp
+                                        )
+                                        Text(
+                                            if (canArrive) "Đã đến nơi"
+                                            else "Còn $distText nữa",
+                                            style = MaterialTheme.typography.labelSmall.copy(
+                                                color = if (canArrive) ActiveGreen
+                                                else Color(0xFFE74C3C),
+                                                fontWeight = FontWeight.SemiBold
+                                            )
+                                        )
+                                    }
+                                }
+
+                                Button(
+                                    onClick = onArrivedAtPickup,
+                                    enabled = canArrive,
+                                    modifier = Modifier.fillMaxWidth().height(56.dp),
+                                    shape = RoundedCornerShape(16.dp),
+                                    colors = ButtonDefaults.buttonColors(
+                                        containerColor = if (canArrive) ActiveGreen
+                                        else Color(0xFF555555),
+                                        disabledContainerColor = Color(0xFF3A3A3A),
+                                    ),
+                                ) {
+                                    Text(
+                                        if (canArrive) "📍  Đã đến điểm đón"
+                                        else "📍  Tiến đến điểm đón",
+                                        style = MaterialTheme.typography.titleMedium.copy(
+                                            fontWeight = FontWeight.Bold,
+                                            color = if (canArrive) Color.White
+                                            else Color.White.copy(alpha = 0.4f)
+                                        )
                                     )
-                                )
+                                }
                             }
                         }
                         TripExecutionPhase.ARRIVED_AT_PICKUP -> {
