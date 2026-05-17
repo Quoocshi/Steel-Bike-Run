@@ -89,6 +89,9 @@ public class Trip {
     @Column(name = "accepted_at")
     private LocalDateTime acceptedAt;
 
+    @Column(name = "arrived_at")
+    private LocalDateTime arrivedAt;
+
     @Column(name = "started_at")
     private LocalDateTime startedAt;
 

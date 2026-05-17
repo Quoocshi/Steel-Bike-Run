@@ -71,6 +71,9 @@ public record TripResponse(
         @Schema(description = "Thời điểm tài xế nhận cuốc")
         LocalDateTime acceptedAt,
 
+        @Schema(description = "Thời điểm tài xế đến điểm đón")
+        LocalDateTime arrivedAt,
+
         @Schema(description = "Thời điểm bắt đầu chuyến đi")
         LocalDateTime startedAt,
 
