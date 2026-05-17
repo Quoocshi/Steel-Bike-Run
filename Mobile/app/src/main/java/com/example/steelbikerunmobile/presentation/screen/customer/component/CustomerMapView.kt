@@ -138,7 +138,9 @@ fun CustomerMapView(
         val driverBmp = createCircleMarkerBitmap(CustomerSecondary, "🚲")
         val trackedBmp = createCircleMarkerBitmap(DriverPrimary, "🚲")
 
-        // H3 surge zone hexagons
+        // H3 hexagon map layer:
+        // - Tất cả ô nền: trắng mờ (0x18FFFFFF) để thấy bản đồ phía dưới
+        // - Ô surge > 1.0: xanh lá đậm dần theo mức
         val h3Core = try { com.uber.h3core.H3Core.newInstance() } catch (e: Throwable) { null }
 
         surgeZones.forEach { zone ->
@@ -154,17 +156,25 @@ fun CustomerMapView(
             } else {
                 hexagonVertices(center, radiusDeg = 0.002)
             }
-            val fill = when {
-                zone.surgeMultiplier >= 2.0 -> Color(0xCCE74C3C)
-                zone.surgeMultiplier >= 1.5 -> Color(0x99E67E22)
-                zone.surgeMultiplier >  1.0 -> Color(0x66F39C12)
-                else                        -> Color(0x442ECC71)
+
+            // Màu nền: trắng mờ mờ (1.0 = bình thường)
+            // Xanh lá đậm dần: 1.0→white, 1.5→light green, 2.0+→deep green
+            val (fillColor, strokeColor) = when {
+                zone.surgeMultiplier >= 2.0 -> // đỏ cam — cực kỳ khan hiếm
+                    Pair(Color(0x9916A085), Color(0xCC1ABC9C))
+                zone.surgeMultiplier >= 1.5 -> // xanh lá đậm — cao
+                    Pair(Color(0x7027AE60), Color(0xAA2ECC71))
+                zone.surgeMultiplier > 1.0  -> // xanh lá nhạt — surge nhẹ
+                    Pair(Color(0x5052BE80), Color(0x8058D68D))
+                else                        -> // trắng mờ — bình thường
+                    Pair(Color(0x18FFFFFF), Color(0x30FFFFFF))
             }
+
             map.addPolygon(
                 PolygonOptions()
                     .addAll(vertices)
-                    .fillColor(fill.toArgb())
-                    .strokeColor(fill.copy(alpha = 0.9f).toArgb())
+                    .fillColor(fillColor.toArgb())
+                    .strokeColor(strokeColor.toArgb())
             )
         }
 
