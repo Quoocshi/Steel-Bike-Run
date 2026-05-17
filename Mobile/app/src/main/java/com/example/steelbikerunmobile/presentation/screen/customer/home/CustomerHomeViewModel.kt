@@ -207,7 +207,7 @@ class CustomerHomeViewModel @Inject constructor(
                 flowStep = CustomerFlowStep.TRIP_PREVIEW,
                 estimate = null,
                 isLoading = true,
-                pickupAddress = "─Éang lß║Ñy ─æß╗ïa chß╗ë...",
+                pickupAddress = "Đang lấy địa chỉ...",
             )
         }
         fetchEstimate(destination)
