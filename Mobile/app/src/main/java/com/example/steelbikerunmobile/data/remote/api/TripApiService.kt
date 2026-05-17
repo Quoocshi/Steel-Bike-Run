@@ -22,6 +22,9 @@ interface TripApiService {
     @PUT("api/v1/trip/{id}/accept")
     suspend fun acceptTrip(@Path("id") tripId: String): ApiEnvelope<TripResponseDto>
 
+    @PUT("api/v1/trip/{id}/arrive")
+    suspend fun arriveAtPickup(@Path("id") tripId: String): ApiEnvelope<TripResponseDto>
+
     @PUT("api/v1/trip/{id}/start")
     suspend fun startTrip(@Path("id") tripId: String): ApiEnvelope<TripResponseDto>
 

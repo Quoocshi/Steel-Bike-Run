@@ -1,4 +1,4 @@
-package com.example.steelbikerunmobile.presentation.screen.customer.home
+﻿package com.example.steelbikerunmobile.presentation.screen.customer.home
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
@@ -33,18 +33,18 @@ import kotlin.math.pow
 import kotlin.math.sin
 import kotlin.math.sqrt
 
-// ── Shared trip status (mirrors backend enum) ──────────────────────────────────
-enum class TripStatus { REQUESTED, ACCEPTED, IN_PROGRESS, COMPLETED }
+// ΓöÇΓöÇ Shared trip status (mirrors backend enum) ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
+enum class TripStatus { REQUESTED, ACCEPTED, ARRIVED, IN_PROGRESS, COMPLETED }
 
-// ── Customer flow step state machine ──────────────────────────────────────────
+// ΓöÇΓöÇ Customer flow step state machine ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
 enum class CustomerFlowStep {
-    HOME,           // idle – map + floating search bar
+    HOME,           // idle ΓÇô map + floating search bar
     SEARCHING,      // destination selection sheet open
     TRIP_PREVIEW,   // bottom sheet: price + payment + confirm
-    FINDING_DRIVER, // radar animation – waiting for match
-    TRACKING,       // driver found – approaching customer
+    FINDING_DRIVER, // radar animation ΓÇô waiting for match
+    TRACKING,       // driver found ΓÇô approaching customer
     IN_PROGRESS,    // customer in vehicle, trip underway
-    RECEIPT,        // trip completed – showing receipt
+    RECEIPT,        // trip completed ΓÇô showing receipt
 }
 
 enum class PaymentMethod { CASH, CARD }
@@ -60,7 +60,7 @@ data class TrackedDriverInfo(
 
 /** Receipt data populated when the trip transitions to COMPLETED. */
 data class TripReceipt(
-    val pickupAddress: String = "Vị trí hiện tại",
+    val pickupAddress: String = "Vß╗ï tr├¡ hiß╗çn tß║íi",
     val destinationAddress: String = "",
     val distanceKm: Double = 0.0,
     val durationMinutes: Int = 0,
@@ -71,13 +71,13 @@ data class TripReceipt(
     val comment: String = "",
 )
 
-/** State of the role-switch (CUSTOMER → DRIVER) flow. */
+/** State of the role-switch (CUSTOMER ΓåÆ DRIVER) flow. */
 enum class RoleSwitchPhase {
     IDLE,                 // not switching
     SWITCHING,            // hitting /driver/switch with no body
-    AWAITING_VEHICLE_INFO,// backend told us we need vehicle info → show form
+    AWAITING_VEHICLE_INFO,// backend told us we need vehicle info ΓåÆ show form
     SUBMITTING_VEHICLE,   // hitting /driver/switch with vehicle body
-    DONE,                 // success — let UI react (Home will route to DriverHomeScreen)
+    DONE,                 // success ΓÇö let UI react (Home will route to DriverHomeScreen)
 }
 
 data class VehicleInfoForm(
@@ -89,7 +89,7 @@ data class VehicleInfoForm(
 
 data class CustomerHomeUiState(
     val pickup: LatLng = DemoMapData.defaultPickup,
-    val pickupAddress: String = "Vị trí hiện tại",
+    val pickupAddress: String = "Vß╗ï tr├¡ hiß╗çn tß║íi",
     val flowStep: CustomerFlowStep = CustomerFlowStep.HOME,
     // Destination
     val destinationAddress: String = "",
@@ -104,7 +104,7 @@ data class CustomerHomeUiState(
     // Tracking (TRACKING step)
     val trackedDriver: TrackedDriverInfo? = null,
     val trackedDriverLocation: LatLng? = null,
-    val tripStatusMessage: String = "Tài xế đang đến điểm đón",
+    val tripStatusMessage: String = "T├ái xß║┐ ─æang ─æß║┐n ─æiß╗âm ─æ├│n",
     // In-progress (IN_PROGRESS step)
     val tripStatus: TripStatus = TripStatus.REQUESTED,
     val tripStartTimeMs: Long = 0L,
@@ -113,7 +113,7 @@ data class CustomerHomeUiState(
     // UI
     val isLoading: Boolean = false,
     val errorMessage: String? = null,
-    // Role-switch (Customer → Driver)
+    // Role-switch (Customer ΓåÆ Driver)
     val roleSwitchPhase: RoleSwitchPhase = RoleSwitchPhase.IDLE,
     val vehicleForm: VehicleInfoForm = VehicleInfoForm(),
     val roleSwitchError: String? = null,
@@ -160,7 +160,7 @@ class CustomerHomeViewModel @Inject constructor(
         }
     }
 
-    // ── Navigation triggers ────────────────────────────────────────────────────
+    // ΓöÇΓöÇ Navigation triggers ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
 
     fun onSearchBarClicked() =
         _uiState.update { it.copy(flowStep = CustomerFlowStep.SEARCHING, searchResults = emptyList()) }
@@ -194,7 +194,7 @@ class CustomerHomeViewModel @Inject constructor(
                 flowStep = CustomerFlowStep.TRIP_PREVIEW,
                 estimate = null,
                 isLoading = true,
-                pickupAddress = "Đang lấy địa chỉ...",
+                pickupAddress = "─Éang lß║Ñy ─æß╗ïa chß╗ë...",
             )
         }
         fetchEstimate(destination)
@@ -233,9 +233,9 @@ class CustomerHomeViewModel @Inject constructor(
         resetToHome()
     }
 
-    // ── Trip status transitions ────────────────────────────────────────────────
+    // ΓöÇΓöÇ Trip status transitions ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
 
-    /** Driver has arrived at pickup → transition to IN_PROGRESS. */
+    /** Driver has arrived at pickup ΓåÆ transition to IN_PROGRESS. */
     fun onTripStarted() {
         trackingJob?.cancel()
         _uiState.update {
@@ -243,7 +243,7 @@ class CustomerHomeViewModel @Inject constructor(
                 flowStep = CustomerFlowStep.IN_PROGRESS,
                 tripStatus = TripStatus.IN_PROGRESS,
                 tripStartTimeMs = System.currentTimeMillis(),
-                tripStatusMessage = "Chuyến đi đang diễn ra...",
+                tripStatusMessage = "Chuyß║┐n ─æi ─æang diß╗àn ra...",
             )
         }
         // Listen for trip completion via WebSocket status messages
@@ -264,7 +264,7 @@ class CustomerHomeViewModel @Inject constructor(
         }
     }
 
-    /** Driver has marked the trip complete → show receipt. */
+    /** Driver has marked the trip complete ΓåÆ show receipt. */
     fun onTripCompleted() {
         tripProgressJob?.cancel()
         val state = _uiState.value
@@ -313,13 +313,13 @@ class CustomerHomeViewModel @Inject constructor(
         refreshNearbyDrivers()
     }
 
-    // ── Private logic ──────────────────────────────────────────────────────────
+    // ΓöÇΓöÇ Private logic ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
 
     private fun fetchEstimate(destination: LatLng) {
         val current = _uiState.value
         viewModelScope.launch {
             val addressResult = reverseGeocodeUseCase(current.pickup)
-            val finalPickupAddress = addressResult.getOrNull() ?: "Vị trí hiện tại"
+            val finalPickupAddress = addressResult.getOrNull() ?: "Vß╗ï tr├¡ hiß╗çn tß║íi"
             _uiState.update { it.copy(pickupAddress = finalPickupAddress) }
 
             getPriceEstimateUseCase(
@@ -334,18 +334,18 @@ class CustomerHomeViewModel @Inject constructor(
     }
 
     /**
-     * Subscribe vào WebSocket và lắng nghe DriverFound message từ Matching Engine.
-     * Khi backend tìm thấy tài xế và tài xế accept, server gửi DriverFoundMessage
-     * đến /topic/trip/{customerId}.
+     * Subscribe v├áo WebSocket v├á lß║»ng nghe DriverFound message tß╗½ Matching Engine.
+     * Khi backend t├¼m thß║Ñy t├ái xß║┐ v├á t├ái xß║┐ accept, server gß╗¡i DriverFoundMessage
+     * ─æß║┐n /topic/trip/{customerId}.
      */
     private fun startWebSocketMatching() {
         wsListenerJob?.cancel()
         wsListenerJob = viewModelScope.launch {
-            // Subscribe vào kênh trip updates (dùng tripId làm customer channel)
+            // Subscribe v├áo k├¬nh trip updates (d├╣ng tripId l├ám customer channel)
             val tripId = currentTripId ?: return@launch
             observeTripUpdatesUseCase.subscribe(tripId)
 
-            // Lắng nghe DriverFound message
+            // Lß║»ng nghe DriverFound message
             observeTripUpdatesUseCase.driverFoundMessages().collect { driver ->
                 _uiState.update {
                     it.copy(
@@ -355,10 +355,10 @@ class CustomerHomeViewModel @Inject constructor(
                             name = driver.driverName,
                             plate = driver.vehiclePlate.ifBlank { "--" },
                             rating = driver.driverRating,
-                            vehicleModel = driver.vehicleModel.ifBlank { "Xe máy" },
+                            vehicleModel = driver.vehicleModel.ifBlank { "Xe m├íy" },
                             vehicleColor = driver.vehicleColor.ifBlank { "--" },
                         ),
-                        tripStatusMessage = "Tài xế đang đến điểm đón (${driver.etaMinutes} phút)",
+                        tripStatusMessage = "T├ái xß║┐ ─æang ─æß║┐n ─æiß╗âm ─æ├│n (${driver.etaMinutes} ph├║t)",
                     )
                 }
                 
@@ -367,7 +367,7 @@ class CustomerHomeViewModel @Inject constructor(
                 
                 // Start listening for status changes
                 startTripStatusListener()
-                return@collect  // Chỉ cần nhận 1 lần
+                return@collect  // Chß╗ë cß║ºn nhß║¡n 1 lß║ºn
             }
         }
     }
@@ -382,15 +382,16 @@ class CustomerHomeViewModel @Inject constructor(
     }
 
     /**
-     * Lắng nghe trip status changes sau khi driver đã accept.
-     * IN_PROGRESS -> driver đã đón khách, bắt đầu chuyến đi
-     * COMPLETED -> chuyến đi hoàn thành
+     * Lß║»ng nghe trip status changes sau khi driver ─æ├ú accept.
+     * IN_PROGRESS -> driver ─æ├ú ─æ├│n kh├ích, bß║»t ─æß║ºu chuyß║┐n ─æi
+     * COMPLETED -> chuyß║┐n ─æi ho├án th├ánh
      */
     private fun startTripStatusListener() {
         trackingJob?.cancel()
         trackingJob = viewModelScope.launch {
             observeTripUpdatesUseCase.tripStatusMessages().collect { statusData ->
                 when (statusData.status) {
+                    "ARRIVED" -> onDriverArrived()
                     "IN_PROGRESS" -> onTripStarted()
                     "COMPLETED" -> onTripCompleted()
                     "CANCELLED" -> {
@@ -401,6 +402,15 @@ class CustomerHomeViewModel @Inject constructor(
                     }
                 }
             }
+        }
+    }
+
+    private fun onDriverArrived() {
+        _uiState.update { 
+            it.copy(
+                tripStatus = TripStatus.ARRIVED,
+                tripStatusMessage = "T├ái xß║┐ ─æ├ú ─æß║┐n ─æiß╗âm ─æ├│n"
+            )
         }
     }
 
@@ -433,11 +443,11 @@ class CustomerHomeViewModel @Inject constructor(
         return 2 * R * asin(sqrt(h))
     }
 
-    // ── Role switch: CUSTOMER → DRIVER ─────────────────────────────────────────
+    // ΓöÇΓöÇ Role switch: CUSTOMER ΓåÆ DRIVER ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
 
     /**
      * Called by the screen in LaunchedEffect(Unit) to handle the case where this ViewModel
-     * instance is reused after a DRIVER → CUSTOMER switch (Hilt scopes the VM to the
+     * instance is reused after a DRIVER ΓåÆ CUSTOMER switch (Hilt scopes the VM to the
      * NavBackStackEntry, so it survives the Home-screen role transition).
      * Resets any stale in-flight phase back to IDLE so the button becomes usable again.
      */
@@ -450,14 +460,14 @@ class CustomerHomeViewModel @Inject constructor(
     }
 
     /**
-     * Entry point for the "Trở thành tài xế" button.
+     * Entry point for the "Trß╗ƒ th├ánh t├ái xß║┐" button.
      *
      * Business flow:
-     *  - Case 1 (Lần đầu — chưa có driver profile): POST /driver/switch with null body
-     *    → backend returns 4xx → show vehicle-info form.
-     *  - Case 2 (Các lần sau — đã có profile): POST /driver/switch with null body
-     *    → backend returns new JWT with DRIVER role → success, navigation happens automatically
-     *    via DataStore → HomeScreen recomposes to DriverHomeScreen.
+     *  - Case 1 (Lß║ºn ─æß║ºu ΓÇö ch╞░a c├│ driver profile): POST /driver/switch with null body
+     *    ΓåÆ backend returns 4xx ΓåÆ show vehicle-info form.
+     *  - Case 2 (C├íc lß║ºn sau ΓÇö ─æ├ú c├│ profile): POST /driver/switch with null body
+     *    ΓåÆ backend returns new JWT with DRIVER role ΓåÆ success, navigation happens automatically
+     *    via DataStore ΓåÆ HomeScreen recomposes to DriverHomeScreen.
      *
      * We do NOT call GET /driver/profile first because that endpoint requires DRIVER role;
      * calling it as CUSTOMER always returns 403, making it impossible to distinguish
@@ -469,7 +479,7 @@ class CustomerHomeViewModel @Inject constructor(
             _uiState.update { it.copy(roleSwitchPhase = RoleSwitchPhase.SWITCHING, roleSwitchError = null) }
             switchToDriverUseCase(vehicleInfo = null).fold(
                 onSuccess = {
-                    // JWT updated in DataStore → HomeScreen will recompose to DriverHomeScreen
+                    // JWT updated in DataStore ΓåÆ HomeScreen will recompose to DriverHomeScreen
                     // automatically. Set IDLE (not DONE) so the same VM instance works
                     // correctly if the user switches back to CUSTOMER and tries again.
                     _uiState.update { it.copy(roleSwitchPhase = RoleSwitchPhase.IDLE) }
@@ -478,20 +488,20 @@ class CustomerHomeViewModel @Inject constructor(
                     val httpCode = (t.cause as? HttpException)?.code() ?: -1
                     when {
                         t.cause is java.io.IOException ->
-                            // Network error — show message, don't show form
+                            // Network error ΓÇö show message, don't show form
                             _uiState.update {
                                 it.copy(
                                     roleSwitchPhase = RoleSwitchPhase.IDLE,
                                     roleSwitchError = t.message
-                                        ?: "Không có kết nối mạng. Vui lòng thử lại.",
+                                        ?: "Kh├┤ng c├│ kß║┐t nß╗æi mß║íng. Vui l├▓ng thß╗¡ lß║íi.",
                                 )
                             }
                         httpCode == 401 || httpCode == 403 ->
-                            // Auth error — ask user to re-login
+                            // Auth error ΓÇö ask user to re-login
                             _uiState.update {
                                 it.copy(
                                     roleSwitchPhase = RoleSwitchPhase.IDLE,
-                                    roleSwitchError = "Phiên đăng nhập hết hạn. Vui lòng đăng nhập lại.",
+                                    roleSwitchError = "Phi├¬n ─æ─âng nhß║¡p hß║┐t hß║ín. Vui l├▓ng ─æ─âng nhß║¡p lß║íi.",
                                 )
                             }
                         httpCode >= 500 ->
@@ -500,11 +510,11 @@ class CustomerHomeViewModel @Inject constructor(
                                 it.copy(
                                     roleSwitchPhase = RoleSwitchPhase.IDLE,
                                     roleSwitchError = t.message?.ifBlank { null }
-                                        ?: "Lỗi máy chủ. Vui lòng thử lại sau.",
+                                        ?: "Lß╗ùi m├íy chß╗º. Vui l├▓ng thß╗¡ lß║íi sau.",
                                 )
                             }
                         else ->
-                            // 400/404/422 or unknown → backend signalling "no vehicle info yet"
+                            // 400/404/422 or unknown ΓåÆ backend signalling "no vehicle info yet"
                             _uiState.update {
                                 it.copy(roleSwitchPhase = RoleSwitchPhase.AWAITING_VEHICLE_INFO)
                             }
@@ -534,7 +544,7 @@ class CustomerHomeViewModel @Inject constructor(
             form.licenseNumber.length != 12
         ) {
             _uiState.update {
-                it.copy(roleSwitchError = "Nhập đủ thông tin xe và bằng lái 12 chữ số")
+                it.copy(roleSwitchError = "Nhß║¡p ─æß╗º th├┤ng tin xe v├á bß║▒ng l├íi 12 chß╗» sß╗æ")
             }
             return
         }
@@ -556,7 +566,7 @@ class CustomerHomeViewModel @Inject constructor(
                     _uiState.update {
                         it.copy(
                             roleSwitchPhase = RoleSwitchPhase.AWAITING_VEHICLE_INFO,
-                            roleSwitchError = t.message ?: "Không thể đăng ký tài xế",
+                            roleSwitchError = t.message ?: "Kh├┤ng thß╗â ─æ─âng k├╜ t├ái xß║┐",
                         )
                     }
                 }
