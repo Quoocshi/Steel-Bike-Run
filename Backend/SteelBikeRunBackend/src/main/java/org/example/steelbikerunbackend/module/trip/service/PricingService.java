@@ -7,6 +7,7 @@ import org.example.steelbikerunbackend.common.exception.AppException;
 import org.example.steelbikerunbackend.common.exception.ErrorCode;
 import org.example.steelbikerunbackend.module.trip.dto.PriceEstimateRequest;
 import org.example.steelbikerunbackend.module.trip.dto.PriceEstimateResponse;
+import org.example.steelbikerunbackend.module.trip.dto.SurgeZoneDto;
 import org.example.steelbikerunbackend.module.trip.entity.H3SurgeZone;
 import org.example.steelbikerunbackend.module.trip.repository.H3SurgeZoneRepository;
 import org.springframework.stereotype.Service;
@@ -163,6 +164,33 @@ public class PricingService {
             }
         }
         return h3Core;
+    }
+
+    // -------------------------------------------------------------------------
+    // SURGE ZONES API — cung cấp dữ liệu cho mobile map layer
+    // -------------------------------------------------------------------------
+
+    /**
+     * Trả về tất cả các ô H3 đang có surge > 1.0 từ DB,
+     * kèm tọa độ tâm để mobile vẽ polygon trên bản đồ.
+     *
+     * <p>Chỉ trả về ô đang active (surge_multiplier > 1.0),
+     * mobile tự render ô bình thường với màu trắng mờ.</p>
+     */
+    public List<SurgeZoneDto> getAllSurgeZones() {
+        H3Core h3 = getH3Core();
+        return surgeZoneRepository.findAll().stream()
+                .map(zone -> {
+                    com.uber.h3core.util.LatLng center = h3.cellToLatLng(zone.getH3Index());
+                    return new SurgeZoneDto(
+                            zone.getH3Index(),
+                            center.lat,
+                            center.lng,
+                            zone.getSurgeMultiplier(),
+                            zone.getActiveDrivers()
+                    );
+                })
+                .collect(Collectors.toList());
     }
 
     // -------------------------------------------------------------------------

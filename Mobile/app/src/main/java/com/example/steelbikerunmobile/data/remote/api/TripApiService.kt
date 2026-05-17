@@ -4,6 +4,7 @@ import com.example.steelbikerunmobile.data.remote.dto.ApiEnvelope
 import com.example.steelbikerunmobile.data.remote.dto.CreateTripRequestDto
 import com.example.steelbikerunmobile.data.remote.dto.PriceEstimateDto
 import com.example.steelbikerunmobile.data.remote.dto.PriceEstimateRequestDto
+import com.example.steelbikerunmobile.data.remote.dto.SurgeZoneResponseDto
 import com.example.steelbikerunmobile.data.remote.dto.TripResponseDto
 import retrofit2.http.Body
 import retrofit2.http.GET
@@ -13,6 +14,9 @@ import retrofit2.http.Path
 import retrofit2.http.Query
 
 interface TripApiService {
+    @GET("api/v1/trip/surge-zones")
+    suspend fun getSurgeZones(): ApiEnvelope<List<SurgeZoneResponseDto>>
+
     @POST("api/v1/trip/estimate")
     suspend fun estimate(@Body request: PriceEstimateRequestDto): ApiEnvelope<PriceEstimateDto>
 

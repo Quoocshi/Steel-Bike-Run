@@ -15,6 +15,7 @@ import retrofit2.HttpException
 import com.example.steelbikerunmobile.data.location.LocationStreamProvider
 import com.example.steelbikerunmobile.domain.usecase.trip.CreateTripUseCase
 import com.example.steelbikerunmobile.domain.usecase.trip.GetPriceEstimateUseCase
+import com.example.steelbikerunmobile.domain.usecase.trip.GetSurgeZonesUseCase
 import com.example.steelbikerunmobile.domain.usecase.trip.ObserveTripUpdatesUseCase
 import com.example.steelbikerunmobile.domain.usecase.trip.ReverseGeocodeUseCase
 import com.example.steelbikerunmobile.domain.usecase.trip.SearchDestinationUseCase
@@ -129,6 +130,7 @@ class CustomerHomeViewModel @Inject constructor(
     private val getNearbyDriversUseCase: GetNearbyDriversUseCase,
     private val getPriceEstimateUseCase: GetPriceEstimateUseCase,
     private val createTripUseCase: CreateTripUseCase,
+    private val getSurgeZonesUseCase: GetSurgeZonesUseCase,
     private val switchToDriverUseCase: SwitchToDriverUseCase,
     private val observeTripUpdatesUseCase: ObserveTripUpdatesUseCase,
     private val searchDestinationUseCase: SearchDestinationUseCase,
@@ -155,6 +157,7 @@ class CustomerHomeViewModel @Inject constructor(
         startLocationTracking()
         refreshNearbyDrivers()
         startNearbyDriverPolling()
+        fetchSurgeZones()
         // Load customer ID từ DataStore ngay khi khởi tạo
         viewModelScope.launch {
             authDataStore.authSessionFlow.collect { session ->
@@ -462,6 +465,19 @@ class CustomerHomeViewModel @Inject constructor(
                     refreshNearbyDrivers()
                 }
             }
+        }
+    }
+
+    /**
+     * Lấy surge zones từ backend để hiển thị lớp hexagon màu sắc trên bản đồ.
+     * Gọi 1 lần khi init; có thể gọi lại sau 5 phút (tương đương chu kỳ batch job).
+     */
+    private fun fetchSurgeZones() {
+        viewModelScope.launch {
+            getSurgeZonesUseCase().onSuccess { zones ->
+                _uiState.update { it.copy(surgeZones = zones) }
+            }
+            // Nếu lỗi (offline, server down) → giữ nguyên DemoMapData fallback trong state
         }
     }
 
