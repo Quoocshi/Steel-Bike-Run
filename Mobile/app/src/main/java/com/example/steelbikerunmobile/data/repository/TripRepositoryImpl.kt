@@ -9,11 +9,6 @@ import com.example.steelbikerunmobile.domain.model.BookingDraft
 import com.example.steelbikerunmobile.domain.model.PriceEstimate
 import com.example.steelbikerunmobile.domain.repository.TripRepository
 import javax.inject.Inject
-import kotlin.math.atan2
-import kotlin.math.cos
-import kotlin.math.pow
-import kotlin.math.sin
-import kotlin.math.sqrt
 
 class TripRepositoryImpl @Inject constructor(
     private val tripApiService: TripApiService
@@ -23,8 +18,8 @@ class TripRepositoryImpl @Inject constructor(
         NetworkErrorMapper.safeCall {
             val envelope = tripApiService.estimate(draft.toEstimateDto())
             envelope.data?.toDomain()
-                ?: error(envelope.message?.takeIf { it.isNotBlank() } ?: "Không thể tính giá")
-        }.recover { estimateLocally(draft) }
+                ?: error(envelope.message?.takeIf { it.isNotBlank() } ?: "Không thể tính giá từ server")
+        }
 
     override suspend fun createTrip(draft: BookingDraft): Result<String> =
         NetworkErrorMapper.safeCall {
@@ -90,31 +85,4 @@ class TripRepositoryImpl @Inject constructor(
         )
     }
 
-    private fun estimateLocally(draft: BookingDraft): PriceEstimate {
-        val distanceKm = haversineKm(
-            draft.pickup.latitude,
-            draft.pickup.longitude,
-            draft.destination.latitude,
-            draft.destination.longitude
-        ).coerceAtLeast(0.5)
-        val basePrice = 12_000.0 + distanceKm * 5_000.0
-        val surge = DemoMapData.surgeZones.maxOf { it.surgeMultiplier }
-        return PriceEstimate(
-            basePrice = basePrice,
-            surgeMultiplier = surge,
-            finalPrice = basePrice * surge,
-            distanceKm = distanceKm,
-            durationMinutes = (distanceKm / 25.0 * 60).toInt().coerceAtLeast(3)
-        )
-    }
-
-    private fun haversineKm(lat1: Double, lng1: Double, lat2: Double, lng2: Double): Double {
-        val radiusKm = 6371.0
-        val dLat = Math.toRadians(lat2 - lat1)
-        val dLng = Math.toRadians(lng2 - lng1)
-        val a = sin(dLat / 2).pow(2) +
-            cos(Math.toRadians(lat1)) * cos(Math.toRadians(lat2)) * sin(dLng / 2).pow(2)
-        val c = 2 * atan2(sqrt(a), sqrt(1 - a))
-        return radiusKm * c
-    }
 }

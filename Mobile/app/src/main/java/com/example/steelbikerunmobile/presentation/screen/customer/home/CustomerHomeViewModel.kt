@@ -1,4 +1,4 @@
-﻿package com.example.steelbikerunmobile.presentation.screen.customer.home
+package com.example.steelbikerunmobile.presentation.screen.customer.home
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
@@ -328,7 +328,14 @@ class CustomerHomeViewModel @Inject constructor(
                 onSuccess = { estimate ->
                     _uiState.update { it.copy(estimate = estimate, isLoading = false) }
                 },
-                onFailure = { _uiState.update { it.copy(isLoading = false) } }
+                onFailure = { t ->
+                    _uiState.update {
+                        it.copy(
+                            isLoading = false,
+                            errorMessage = t.message ?: "Không thể kết nối server để tính giá. Vui lòng thử lại."
+                        )
+                    }
+                }
             )
         }
     }
