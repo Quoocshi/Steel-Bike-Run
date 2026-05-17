@@ -107,6 +107,8 @@ public class MatchingService {
                                 .tripId(trip.getId().toString())
                                 .driverId(trip.getDriver().getId().toString())
                                 .driverName(trip.getDriver().getUser().getFullName())
+                                .driverPhone(trip.getDriver().getUser().getPhone())
+                                .driverTotalTrips(trip.getDriver().getTotalTrips())
                                 .vehiclePlate(trip.getDriver().getVehiclePlate())
                                 .vehicleModel(trip.getDriver().getVehicleModel())
                                 .vehicleColor(trip.getDriver().getVehicleColor())
