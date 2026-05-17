@@ -116,7 +116,6 @@ fun CustomerHomeScreen(
             pickup                = uiState.pickup,
             destination           = uiState.destination,
             nearbyDrivers         = uiState.nearbyDrivers,
-            surgeZones            = uiState.surgeZones,
             trackedDriverLocation = uiState.trackedDriverLocation,
             flowStep              = uiState.flowStep,
             recenterTrigger       = uiState.recenterTrigger,
