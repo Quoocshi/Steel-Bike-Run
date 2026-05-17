@@ -145,8 +145,9 @@ class DriverServiceTest {
     }
 
     @Test
-    @DisplayName("setOnlineStatus: Thành công cập nhật status online")
+    @DisplayName("setOnlineStatus: Offline -> Online transitions properly")
     void setOnlineStatus_Success() {
+        // existingDriver starts offline, request online -> full update
         when(userRepository.findByEmail(driverUser.getEmail())).thenReturn(Optional.of(driverUser));
         when(driverRepository.findByUserIdWithUser(driverUser.getId())).thenReturn(Optional.of(existingDriver));
         when(driverRepository.save(any(Driver.class))).thenAnswer(i -> i.getArgument(0));
@@ -155,8 +156,25 @@ class DriverServiceTest {
 
         assertThat(response.isOnline()).isTrue();
         verify(driverRepository).save(existingDriver);
-        // Khi bật online, không xóa Redis
+        // Normal offline->online transition: Redis entry not yet present, heartbeat will add it
         verify(driverLocationService, never()).removeDriverLocation(any());
+    }
+
+    @Test
+    @DisplayName("setOnlineStatus: Reconnect (online -> online) clears stale Redis entry")
+    void setOnlineStatus_Reconnect_ClearsRedisLocation() {
+        // Driver already online in DB (e.g. app restart without explicit offline)
+        existingDriver.setOnline(true);
+        when(userRepository.findByEmail(driverUser.getEmail())).thenReturn(Optional.of(driverUser));
+        when(driverRepository.findByUserIdWithUser(driverUser.getId())).thenReturn(Optional.of(existingDriver));
+
+        DriverProfileResponse response = driverService.setOnlineStatus(driverUser.getEmail(), new DriverStatusRequest(true));
+
+        // DB not updated (no state change needed)
+        verify(driverRepository, never()).save(any());
+        // Stale Redis entry purged so next heartbeat writes fresh location
+        verify(driverLocationService).removeDriverLocation(existingDriver.getId().toString());
+        assertThat(response.isOnline()).isTrue();
     }
 
     @Test
@@ -175,9 +193,9 @@ class DriverServiceTest {
     }
 
     @Test
-    @DisplayName("setOnlineStatus: No-op khi trạng thái đã khớp")
-    void setOnlineStatus_NoOp_WhenSameStatus() {
-        // existingDriver đang offline, request offline -> no-op
+    @DisplayName("setOnlineStatus: No-op when already offline (offline -> offline)")
+    void setOnlineStatus_NoOp_WhenSameOfflineStatus() {
+        // existingDriver already offline, request offline -> no-op, Redis not touched
         when(userRepository.findByEmail(driverUser.getEmail())).thenReturn(Optional.of(driverUser));
         when(driverRepository.findByUserIdWithUser(driverUser.getId())).thenReturn(Optional.of(existingDriver));
 
