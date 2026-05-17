@@ -13,6 +13,7 @@ import org.example.steelbikerunbackend.module.trip.service.TripService;
 import org.example.steelbikerunbackend.module.user.entity.User;
 import org.example.steelbikerunbackend.module.user.repository.UserRepository;
 import org.example.steelbikerunbackend.module.websocket.MatchingService;
+import org.example.steelbikerunbackend.module.websocket.matching.MatchingQueue;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -38,6 +39,7 @@ class TripServiceTest {
     @Mock private DriverRepository driverRepository;
     @Mock private PricingService pricingService;
     @Mock private MatchingService matchingService;
+    @Mock private MatchingQueue matchingQueue;
 
     @InjectMocks private TripService tripService;
 
