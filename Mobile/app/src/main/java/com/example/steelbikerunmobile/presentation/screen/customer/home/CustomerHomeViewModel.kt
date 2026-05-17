@@ -424,6 +424,10 @@ class CustomerHomeViewModel @Inject constructor(
                     "ARRIVED" -> onDriverArrived()
                     "IN_PROGRESS" -> onTripStarted()
                     "COMPLETED" -> onTripCompleted()
+                    // MatchingEngine đang tìm tiếp (round 2+) → cập nhật message cho customer
+                    "SEARCHING" -> _uiState.update {
+                        it.copy(tripStatusMessage = statusData.message)
+                    }
                     "CANCELLED" -> {
                         wsListenerJob?.cancel()
                         driverLocationJob?.cancel()
