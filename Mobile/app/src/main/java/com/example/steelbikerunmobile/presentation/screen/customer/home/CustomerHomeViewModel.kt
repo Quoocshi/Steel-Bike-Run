@@ -469,15 +469,18 @@ class CustomerHomeViewModel @Inject constructor(
     }
 
     /**
-     * Lấy surge zones từ backend để hiển thị lớp hexagon màu sắc trên bản đồ.
-     * Gọi 1 lần khi init; có thể gọi lại sau 5 phút (tương đương chu kỳ batch job).
+     * Fetch surge zones từ backend mỗi 30 giây.
+     * Chạy liên tục trong background để hexagon map layer luôn cập nhật theo thực tế.
+     * Nếu lỗi (offline/server down) → bỏ qua và giữ data cũ, thử lại lần tiếp theo.
      */
     private fun fetchSurgeZones() {
         viewModelScope.launch {
-            getSurgeZonesUseCase().onSuccess { zones ->
-                _uiState.update { it.copy(surgeZones = zones) }
+            while (isActive) {
+                getSurgeZonesUseCase().onSuccess { zones ->
+                    _uiState.update { it.copy(surgeZones = zones) }
+                }
+                delay(30_000L)
             }
-            // Nếu lỗi (offline, server down) → giữ nguyên DemoMapData fallback trong state
         }
     }
 

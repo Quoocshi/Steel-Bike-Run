@@ -27,6 +27,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import javax.inject.Inject
 
@@ -160,10 +161,18 @@ class DriverHomeViewModel @Inject constructor(
         }
     }
 
+    /**
+     * Fetch surge zones từ backend mỗi 30 giây.
+     * Chạy liên tục trong background để hexagon map layer luôn cập nhật theo thực tế.
+     * Nếu lỗi (offline/server down) → bỏ qua và giữ data cũ, thử lại lần tiếp theo.
+     */
     private fun fetchSurgeZones() {
         viewModelScope.launch {
-            getSurgeZonesUseCase().onSuccess { zones ->
-                _uiState.update { it.copy(surgeZones = zones) }
+            while (isActive) {
+                getSurgeZonesUseCase().onSuccess { zones ->
+                    _uiState.update { it.copy(surgeZones = zones) }
+                }
+                delay(30_000L)
             }
         }
     }
