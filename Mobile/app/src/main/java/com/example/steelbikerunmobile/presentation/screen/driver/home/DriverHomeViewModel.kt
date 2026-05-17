@@ -18,6 +18,7 @@ import com.example.steelbikerunmobile.domain.usecase.driver.SetDriverOnlineStatu
 import com.example.steelbikerunmobile.domain.usecase.driver.StreamLocationUseCase
 import com.example.steelbikerunmobile.domain.usecase.driver.SwitchToCustomerUseCase
 import com.example.steelbikerunmobile.domain.usecase.driver.SwitchToDriverUseCase
+import com.example.steelbikerunmobile.domain.usecase.trip.GetSurgeZonesUseCase
 import com.example.steelbikerunmobile.domain.usecase.trip.ObserveDriverTripRequestsUseCase
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.Job
@@ -26,6 +27,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import javax.inject.Inject
 
@@ -134,6 +136,7 @@ class DriverHomeViewModel @Inject constructor(
     private val getNearbyDriversUseCase: GetNearbyDriversUseCase,
     private val observeCurrentH3IndexUseCase: ObserveCurrentH3IndexUseCase,
     private val observeDriverTripRequestsUseCase: ObserveDriverTripRequestsUseCase,
+    private val getSurgeZonesUseCase: GetSurgeZonesUseCase,
     private val tripRepository: TripRepository,
 ) : ViewModel() {
 
@@ -147,12 +150,29 @@ class DriverHomeViewModel @Inject constructor(
         loadProfile()
         refreshNearbyDrivers(DemoMapData.defaultPickup)
         observeH3Index()
+        fetchSurgeZones()
     }
 
     private fun observeH3Index() {
         h3IndexJob = viewModelScope.launch {
             observeCurrentH3IndexUseCase().collect { h3Index ->
                 _uiState.update { it.copy(currentH3Index = h3Index) }
+            }
+        }
+    }
+
+    /**
+     * Fetch surge zones từ backend mỗi 30 giây.
+     * Chạy liên tục trong background để hexagon map layer luôn cập nhật theo thực tế.
+     * Nếu lỗi (offline/server down) → bỏ qua và giữ data cũ, thử lại lần tiếp theo.
+     */
+    private fun fetchSurgeZones() {
+        viewModelScope.launch {
+            while (isActive) {
+                getSurgeZonesUseCase().onSuccess { zones ->
+                    _uiState.update { it.copy(surgeZones = zones) }
+                }
+                delay(30_000L)
             }
         }
     }
