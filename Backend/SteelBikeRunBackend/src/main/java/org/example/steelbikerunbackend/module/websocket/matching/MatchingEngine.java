@@ -94,8 +94,9 @@ public class MatchingEngine {
         }
         TripMatchingState state = stateOpt.get();
 
-        // 2. Đọc Trip từ DB — kiểm tra trạng thái hiện tại
-        Optional<Trip> tripOpt = tripRepository.findById(UUID.fromString(tripId));
+        // 2. Đọc Trip từ DB với JOIN FETCH customer — tránh LazyInitializationException
+        //    vì @Scheduled thread không có Hibernate session sau khi transaction đóng.
+        Optional<Trip> tripOpt = tripRepository.findByIdWithCustomer(UUID.fromString(tripId));
         if (tripOpt.isEmpty()) {
             log.warn("[MatchingEngine] Trip {} không tồn tại trong DB → remove queue", tripId);
             matchingQueue.remove(tripId);
