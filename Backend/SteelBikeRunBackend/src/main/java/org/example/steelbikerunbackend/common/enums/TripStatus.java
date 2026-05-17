@@ -12,7 +12,6 @@ package org.example.steelbikerunbackend.common.enums;
 public enum TripStatus {
     REQUESTED,
     ACCEPTED,
-    /** Tài xế đã đến điểm đón, chờ khách lên xe. */
     ARRIVED,
     IN_PROGRESS,
     COMPLETED,
