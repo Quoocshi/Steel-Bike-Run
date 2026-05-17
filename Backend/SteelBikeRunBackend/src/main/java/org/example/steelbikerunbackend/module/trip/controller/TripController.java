@@ -27,7 +27,8 @@ import java.util.UUID;
  * POST /api/v1/trip/estimate      (Public)    Ước tính giá
  * POST /api/v1/trip               (CUSTOMER)  Đặt xe
  * PUT  /api/v1/trip/{id}/accept   (DRIVER)    Nhận cuốc
- * PUT  /api/v1/trip/{id}/start    (DRIVER)    Bắt đầu chuyến
+ * PUT  /api/v1/trip/{id}/arrive   (DRIVER)    Đã đến điểm đón
+ * PUT  /api/v1/trip/{id}/start    (DRIVER)    Bắt đầu chuyến (sau khi khách lên xe)
  * PUT  /api/v1/trip/{id}/complete (DRIVER)    Hoàn thành
  * PUT  /api/v1/trip/{id}/cancel   (AUTH)      Hủy cuốc
  * GET  /api/v1/trip/{id}          (AUTH)      Xem chi tiết
@@ -101,6 +102,20 @@ public class TripController {
             @PathVariable UUID id) {
         TripResponse result = tripService.acceptTrip(authentication.getName(), id);
         return ResponseEntity.ok(ApiResponse.success("Nhận cuốc thành công", result));
+    }
+
+    // -------------------------------------------------------------------------
+    // ARRIVE (Driver - Authenticated)
+    // -------------------------------------------------------------------------
+
+    @Operation(summary = "Xác nhận đã đến điểm đón",
+            description = "Driver bấm khi đã tới nơi đón khách. Chuyển trip từ ACCEPTED -> ARRIVED, thông báo Customer.")
+    @PutMapping("/{id}/arrive")
+    public ResponseEntity<ApiResponse<TripResponse>> arriveAtPickup(
+            Authentication authentication,
+            @PathVariable UUID id) {
+        TripResponse result = tripService.arriveAtPickup(authentication.getName(), id);
+        return ResponseEntity.ok(ApiResponse.success("Đã đến điểm đón", result));
     }
 
     // -------------------------------------------------------------------------
