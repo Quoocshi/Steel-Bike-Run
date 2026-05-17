@@ -15,10 +15,13 @@ import org.example.steelbikerunbackend.module.trip.repository.TripRepository;
 import org.example.steelbikerunbackend.module.user.entity.User;
 import org.example.steelbikerunbackend.module.user.repository.UserRepository;
 import org.example.steelbikerunbackend.module.websocket.MatchingService;
+import org.example.steelbikerunbackend.module.websocket.matching.MatchingQueue;
+import org.example.steelbikerunbackend.module.websocket.matching.TripMatchingState;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
+import java.time.Instant;
 import java.time.LocalDateTime;
 import java.util.List;
 import java.util.UUID;
@@ -47,11 +50,12 @@ import java.util.UUID;
 @RequiredArgsConstructor
 public class TripService {
 
-        private final TripRepository tripRepository;
-        private final UserRepository userRepository;
-        private final DriverRepository driverRepository;
-        private final PricingService pricingService;
-        private final MatchingService matchingService;
+    private final TripRepository tripRepository;
+    private final UserRepository userRepository;
+    private final DriverRepository driverRepository;
+    private final PricingService pricingService;
+    private final MatchingService matchingService;
+    private final MatchingQueue matchingQueue;
 
         // -------------------------------------------------------------------------
         // CREATE: Customer đặt xe
@@ -112,20 +116,25 @@ public class TripService {
                                 .durationMinutes(durationMinutes)
                                 .build();
 
-                trip = tripRepository.save(trip);
+        trip = tripRepository.save(trip);
 
-                log.info("[Trip] Created trip {} for customer {} | price={} surge={} | pickup=[{},{}]",
-                                trip.getId(), customer.getEmail(), finalPrice, surge,
-                                request.pickupLat(), request.pickupLng());
+        log.info("[Trip] Created trip {} for customer {} | price={} surge={} | pickup=[{},{}]",
+                trip.getId(), customer.getEmail(), finalPrice, surge,
+                request.pickupLat(), request.pickupLng());
 
-                // Broadcast đến tài xế gần nhất qua WebSocket
-                int notifiedDrivers = matchingService.broadcastToNearbyDrivers(trip);
-                if (notifiedDrivers == 0) {
-                        log.warn("[Trip] Trip {} - Không có driver nào gần. Customer sẽ phải chờ.", trip.getId());
-                }
+        // Đẩy vào MatchingEngine — engine sẽ tự tìm tài xế theo round, retry liên tục
+        TripMatchingState matchingState = TripMatchingState.builder()
+                .tripId(trip.getId().toString())
+                .customerId(customer.getId().toString())
+                .pickupLat(request.pickupLat())
+                .pickupLng(request.pickupLng())
+                .createdAt(Instant.now())
+                .round(0)   // Engine sẽ tăng lên 1 ở lần tick đầu tiên
+                .build();
+        matchingQueue.enqueue(matchingState);
 
-                return toResponse(trip);
-        }
+        return toResponse(trip);
+    }
 
         // -------------------------------------------------------------------------
         // ACCEPT: Driver nhận cuốc
@@ -162,6 +171,9 @@ public class TripService {
 
                 log.info("[Trip] Trip {} ACCEPTED by driver {} ({})",
                                 trip.getId(), driver.getId(), user.getEmail());
+
+                // Dừng MatchingEngine tìm tiếp — trip đã có driver
+                matchingQueue.remove(trip.getId().toString());
 
                 // Thông báo cho Customer qua WebSocket
                 matchingService.notifyCustomerDriverFound(trip);
