@@ -194,6 +194,7 @@ fun DriverHomeScreen(
                     onStartTrip = viewModel::onStartTrip,
                     onSwipeToComplete = viewModel::onSwipeToComplete,
                     isLoading = uiState.isLoading,
+                    distanceToPickupMeters = uiState.distanceToPickupMeters,
                 )
             }
         }
