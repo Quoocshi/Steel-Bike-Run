@@ -18,6 +18,7 @@ import com.example.steelbikerunmobile.domain.usecase.trip.GetPriceEstimateUseCas
 import com.example.steelbikerunmobile.domain.usecase.trip.ObserveTripUpdatesUseCase
 import com.example.steelbikerunmobile.domain.usecase.trip.ReverseGeocodeUseCase
 import com.example.steelbikerunmobile.domain.usecase.trip.SearchDestinationUseCase
+import com.example.steelbikerunmobile.data.local.datastore.AuthPreferencesDataStore
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
@@ -131,6 +132,7 @@ class CustomerHomeViewModel @Inject constructor(
     private val searchDestinationUseCase: SearchDestinationUseCase,
     private val reverseGeocodeUseCase: ReverseGeocodeUseCase,
     private val locationStreamProvider: LocationStreamProvider,
+    private val authDataStore: AuthPreferencesDataStore,
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(CustomerHomeUiState())
@@ -143,10 +145,18 @@ class CustomerHomeViewModel @Inject constructor(
     private var searchJob: Job? = null
     private var driverLocationJob: Job? = null
     private var currentTripId: String? = null
+    /** Customer ID lưu từ DataStore — dùng để subscribe đúng kênh /topic/trip/{customerId}. */
+    private var currentCustomerId: String? = null
 
-    init { 
+    init {
         startLocationTracking()
-        refreshNearbyDrivers() 
+        refreshNearbyDrivers()
+        // Load customer ID từ DataStore ngay khi khởi tạo
+        viewModelScope.launch {
+            authDataStore.authSessionFlow.collect { session ->
+                if (session != null) currentCustomerId = session.userId
+            }
+        }
     }
 
     fun startLocationTracking() {
@@ -313,13 +323,13 @@ class CustomerHomeViewModel @Inject constructor(
         refreshNearbyDrivers()
     }
 
-    // ΓöÇΓöÇ Private logic ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
+    // ── Private logic ─────────────────────────────────────────────────────────────
 
     private fun fetchEstimate(destination: LatLng) {
         val current = _uiState.value
         viewModelScope.launch {
             val addressResult = reverseGeocodeUseCase(current.pickup)
-            val finalPickupAddress = addressResult.getOrNull() ?: "Vß╗ï tr├¡ hiß╗çn tß║íi"
+            val finalPickupAddress = addressResult.getOrNull() ?: "Vị trí hiện tại"
             _uiState.update { it.copy(pickupAddress = finalPickupAddress) }
 
             getPriceEstimateUseCase(
@@ -341,18 +351,21 @@ class CustomerHomeViewModel @Inject constructor(
     }
 
     /**
-     * Subscribe v├áo WebSocket v├á lß║»ng nghe DriverFound message tß╗½ Matching Engine.
-     * Khi backend t├¼m thß║Ñy t├ái xß║┐ v├á t├ái xß║┐ accept, server gß╗¡i DriverFoundMessage
-     * ─æß║┐n /topic/trip/{customerId}.
+     * Subscribe vào WebSocket và lắng nghe DriverFound message từ Matching Engine.
+     * Backend broadcast đến /topic/trip/{customerId} khi driver accept cuốc.
      */
     private fun startWebSocketMatching() {
         wsListenerJob?.cancel()
         wsListenerJob = viewModelScope.launch {
-            // Subscribe v├áo k├¬nh trip updates (d├╣ng tripId l├ám customer channel)
-            val tripId = currentTripId ?: return@launch
-            observeTripUpdatesUseCase.subscribe(tripId)
+            // ✔ Dùng customerId (đúng) thay vì tripId (đã sai trước)
+            val customerId = currentCustomerId
+            if (customerId.isNullOrBlank()) {
+                _uiState.update { it.copy(errorMessage = "Phiên đăng nhập không hợp lệ. Vui lòng đăng nhập lại.") }
+                return@launch
+            }
+            observeTripUpdatesUseCase.subscribe(customerId)
 
-            // Lß║»ng nghe DriverFound message
+            // Lắng nghe DriverFound message
             observeTripUpdatesUseCase.driverFoundMessages().collect { driver ->
                 _uiState.update {
                     it.copy(
@@ -362,10 +375,10 @@ class CustomerHomeViewModel @Inject constructor(
                             name = driver.driverName,
                             plate = driver.vehiclePlate.ifBlank { "--" },
                             rating = driver.driverRating,
-                            vehicleModel = driver.vehicleModel.ifBlank { "Xe m├íy" },
+                            vehicleModel = driver.vehicleModel.ifBlank { "Xe máy" },
                             vehicleColor = driver.vehicleColor.ifBlank { "--" },
                         ),
-                        tripStatusMessage = "T├ái xß║┐ ─æang ─æß║┐n ─æiß╗âm ─æ├│n (${driver.etaMinutes} ph├║t)",
+                        tripStatusMessage = "Tài xế đang đến điểm đón (${driver.etaMinutes} phút)",
                     )
                 }
                 
