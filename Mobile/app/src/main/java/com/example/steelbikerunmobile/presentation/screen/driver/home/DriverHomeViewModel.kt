@@ -483,13 +483,18 @@ class DriverHomeViewModel @Inject constructor(
                         licenseNumber = profile.licenseNumber.orEmpty(),
                     )
                 }
-                // Trường hợp driver vào màn hình này khi đã Online từ trước
-                // (vd: vừa switch từ Customer → Driver, hoặc mở lại app khi đang online).
-                // Backend đã ghi isOnline=true, Mobile cần tự bật GPS stream ngay.
-                // LocationStreamProvider kiểm tra permission nội bộ — an toàn khi gọi không có permission.
+                // Driver đã online từ phiên trước (backend ghi isOnline=true).
+                // Cần: (1) re-sync lên backend để đảm bảo server biết driver này available,
+                //       (2) bật GPS stream, (3) subscribe WebSocket nhận cuốc.
                 if (profile.isOnline) {
+                    viewModelScope.launch {
+                        // Re-confirm online status với backend (tránh trường hợp server đã reset)
+                        setDriverOnlineStatusUseCase(true)
+                    }
                     startLocationStream()
+                    startListeningForTrips()
                 }
+
             }
         }
     }

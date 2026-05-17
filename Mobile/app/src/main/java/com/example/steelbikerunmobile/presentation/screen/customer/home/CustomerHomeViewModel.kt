@@ -26,6 +26,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import javax.inject.Inject
 import kotlin.math.asin
@@ -144,6 +145,7 @@ class CustomerHomeViewModel @Inject constructor(
     private var locationJob: Job? = null
     private var searchJob: Job? = null
     private var driverLocationJob: Job? = null
+    private var nearbyDriverPollingJob: Job? = null
     private var currentTripId: String? = null
     /** Customer ID lưu từ DataStore — dùng để subscribe đúng kênh /topic/trip/{customerId}. */
     private var currentCustomerId: String? = null
@@ -151,6 +153,7 @@ class CustomerHomeViewModel @Inject constructor(
     init {
         startLocationTracking()
         refreshNearbyDrivers()
+        startNearbyDriverPolling()
         // Load customer ID từ DataStore ngay khi khởi tạo
         viewModelScope.launch {
             authDataStore.authSessionFlow.collect { session ->
@@ -438,6 +441,23 @@ class CustomerHomeViewModel @Inject constructor(
         viewModelScope.launch {
             getNearbyDriversUseCase(_uiState.value.pickup).onSuccess { drivers ->
                 _uiState.update { it.copy(nearbyDrivers = drivers) }
+            }
+        }
+    }
+
+    /**
+     * Poll danh sách driver gần đó mỗi 30 giây.
+     * Chỉ chạy khi customer đang ở HOME hoặc TRIP_PREVIEW (không spam khi đang trong chuyến).
+     */
+    private fun startNearbyDriverPolling() {
+        nearbyDriverPollingJob?.cancel()
+        nearbyDriverPollingJob = viewModelScope.launch {
+            while (isActive) {
+                delay(30_000L)
+                val step = _uiState.value.flowStep
+                if (step == CustomerFlowStep.HOME || step == CustomerFlowStep.TRIP_PREVIEW) {
+                    refreshNearbyDrivers()
+                }
             }
         }
     }
