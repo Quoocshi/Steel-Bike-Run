@@ -190,9 +190,10 @@ fun DriverHomeScreen(
             uiState.activeTrip?.let { trip ->
                 TripInProgressOverlay(
                     activeTrip = trip,
-                    onArriveAtPickup = viewModel::onArriveAtPickup,
+                    onArrivedAtPickup = viewModel::onArrivedAtPickup,
                     onStartTrip = viewModel::onStartTrip,
-                    onSwipeToComplete = viewModel::onSwipeToComplete
+                    onSwipeToComplete = viewModel::onSwipeToComplete,
+                    isLoading = uiState.isLoading,
                 )
             }
         }

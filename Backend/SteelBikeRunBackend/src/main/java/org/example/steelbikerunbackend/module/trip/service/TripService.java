@@ -29,9 +29,9 @@ import java.util.UUID;
  * <h3>State machine:</h3>
  * 
  * <pre>
- * REQUESTED --> ACCEPTED --> IN_PROGRESS --> COMPLETED
- *      |            |              |
- *      +------------+--------------+--------> CANCELLED
+ * REQUESTED --> ACCEPTED --> ARRIVED --> IN_PROGRESS --> COMPLETED
+ *      |            |            |              |
+ *      +------------+------------+--------------+--------> CANCELLED
  * </pre>
  *
  * <h3>Nguyên tắc thiết kế:</h3>
@@ -174,42 +174,33 @@ public class TripService {
         // ARRIVE: Driver đã đến điểm đón
         // -------------------------------------------------------------------------
 
+        /**
+         * Driver xác nhận đã đến điểm đón. Chỉ trip ACCEPTED mới arrive được.
+         * Sau bước này, Customer nhận thông báo "Tài xế đã đến nơi".
+         *
+         * @param driverEmail email từ JWT principal
+         * @param tripId      ID cuốc xe
+         */
         @Transactional
-        public TripResponse arriveTrip(String driverEmail, UUID tripId) {
-                Trip trip = tripRepository.findById(tripId)
-                                .orElseThrow(() -> new AppException(ErrorCode.TRIP_NOT_FOUND));
-
-                if (trip.getStatus() != TripStatus.ACCEPTED) {
-                        throw new AppException(ErrorCode.INVALID_REQUEST,
-                                        "Chỉ có thể báo đã đến khi cuốc xe ở trạng thái ACCEPTED.");
-                }
-
-                User user = userRepository.findByEmail(driverEmail)
-                                .orElseThrow(() -> new AppException(ErrorCode.USER_NOT_FOUND));
-                Driver driver = driverRepository.findByUserIdWithUser(user.getId())
-                                .orElseThrow(() -> new AppException(ErrorCode.DRIVER_NOT_FOUND));
-
-                if (trip.getDriver() == null || !trip.getDriver().getId().equals(driver.getId())) {
-                        throw new AppException(ErrorCode.INVALID_REQUEST, "Bạn không phải tài xế của cuốc này.");
-                }
+        public TripResponse arriveAtPickup(String driverEmail, UUID tripId) {
+                Trip trip = findTripAndValidateDriver(driverEmail, tripId, TripStatus.ACCEPTED);
 
                 trip.setStatus(TripStatus.ARRIVED);
                 trip = tripRepository.save(trip);
 
-                log.info("[Trip] Trip {} ARRIVED by driver {} ({})",
-                                trip.getId(), driver.getId(), user.getEmail());
-
+                log.info("[Trip] Trip {} ARRIVED at pickup", trip.getId());
                 matchingService.broadcastTripStatus(trip, "Tài xế đã đến điểm đón");
 
                 return toResponse(trip);
         }
 
         // -------------------------------------------------------------------------
-        // START: Driver bắt đầu chuyến đi
+        // START: Driver bắt đầu chuyến đi (sau khi khách đã lên xe)
         // -------------------------------------------------------------------------
 
         /**
-         * Driver bắt đầu chuyến đi. Chỉ trip ACCEPTED mới start được.
+         * Driver bắt đầu chuyến đi. Chỉ trip ARRIVED mới start được.
+         * (Đảm bảo driver phải bấm "Đã đến" trước, rồi mới "Bắt đầu chuyến".)
          *
          * @param driverEmail email từ JWT principal
          * @param tripId      ID cuốc xe

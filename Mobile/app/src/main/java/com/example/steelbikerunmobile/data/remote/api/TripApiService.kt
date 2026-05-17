@@ -19,13 +19,13 @@ interface TripApiService {
     @POST("api/v1/trip")
     suspend fun createTrip(@Body request: CreateTripRequestDto): ApiEnvelope<TripResponseDto>
 
-    @PUT("/api/v1/trip/{id}/accept")
+    @PUT("api/v1/trip/{id}/accept")
     suspend fun acceptTrip(@Path("id") tripId: String): ApiEnvelope<TripResponseDto>
 
-    @PUT("/api/v1/trip/{id}/arrive")
-    suspend fun arriveTrip(@Path("id") tripId: String): ApiEnvelope<TripResponseDto>
+    @PUT("api/v1/trip/{id}/arrive")
+    suspend fun arriveAtPickup(@Path("id") tripId: String): ApiEnvelope<TripResponseDto>
 
-    @PUT("/api/v1/trip/{id}/start")
+    @PUT("api/v1/trip/{id}/start")
     suspend fun startTrip(@Path("id") tripId: String): ApiEnvelope<TripResponseDto>
 
     @PUT("api/v1/trip/{id}/complete")

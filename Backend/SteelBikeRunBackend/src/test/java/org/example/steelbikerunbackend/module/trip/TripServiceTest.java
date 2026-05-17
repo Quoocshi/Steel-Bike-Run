@@ -46,6 +46,7 @@ class TripServiceTest {
     private Driver driver;
     private Trip requestedTrip;
     private Trip acceptedTrip;
+    private Trip arrivedTrip;
     private Trip inProgressTrip;
 
     @BeforeEach
@@ -102,6 +103,26 @@ class TripServiceTest {
                 .destLng(106.6297)
                 .destAddress("San bay Tan Son Nhat")
                 .status(TripStatus.ACCEPTED)
+                .basePrice(new BigDecimal("55000"))
+                .surgeMultiplier(BigDecimal.ONE)
+                .finalPrice(new BigDecimal("55000"))
+                .distanceKm(8.5f)
+                .durationMinutes(26)
+                .requestedAt(LocalDateTime.now())
+                .acceptedAt(LocalDateTime.now())
+                .build();
+
+        arrivedTrip = Trip.builder()
+                .id(requestedTrip.getId())
+                .customer(customer)
+                .driver(driver)
+                .pickupLat(10.7769)
+                .pickupLng(106.7009)
+                .pickupH3Index("891f1d4b2a3ffff")
+                .destLat(10.8230)
+                .destLng(106.6297)
+                .destAddress("San bay Tan Son Nhat")
+                .status(TripStatus.ARRIVED)
                 .basePrice(new BigDecimal("55000"))
                 .surgeMultiplier(BigDecimal.ONE)
                 .finalPrice(new BigDecimal("55000"))
@@ -175,18 +196,47 @@ class TripServiceTest {
     }
 
     // -------------------------------------------------------------------------
-    // startTrip()
+    // arriveAtPickup()
     // -------------------------------------------------------------------------
 
     @Test
-    @DisplayName("startTrip: ACCEPTED -> IN_PROGRESS thành công")
-    void startTrip_Success() {
+    @DisplayName("arriveAtPickup: ACCEPTED -> ARRIVED thành công")
+    void arriveAtPickup_Success() {
         when(tripRepository.findById(acceptedTrip.getId())).thenReturn(Optional.of(acceptedTrip));
         when(userRepository.findByEmail("driver@test.com")).thenReturn(Optional.of(driverUser));
         when(driverRepository.findByUserIdWithUser(driverUser.getId())).thenReturn(Optional.of(driver));
         when(tripRepository.save(any(Trip.class))).thenAnswer(inv -> inv.getArgument(0));
 
-        TripResponse result = tripService.startTrip("driver@test.com", acceptedTrip.getId());
+        TripResponse result = tripService.arriveAtPickup("driver@test.com", acceptedTrip.getId());
+
+        assertThat(result.status()).isEqualTo(TripStatus.ARRIVED);
+        verify(matchingService).broadcastTripStatus(any(), eq("Tài xế đã đến điểm đón"));
+    }
+
+    @Test
+    @DisplayName("arriveAtPickup: Trip không phải ACCEPTED -> ném INVALID_TRIP_STATUS")
+    void arriveAtPickup_WrongStatus_ThrowsException() {
+        when(tripRepository.findById(arrivedTrip.getId())).thenReturn(Optional.of(arrivedTrip));
+        // NOTE: no need to stub userRepository/driverRepository here because
+        // findTripAndValidateDriver() throws INVALID_TRIP_STATUS before reaching driver lookup.
+
+        assertThatThrownBy(() -> tripService.arriveAtPickup("driver@test.com", arrivedTrip.getId()))
+                .isInstanceOf(AppException.class);
+    }
+
+    // -------------------------------------------------------------------------
+    // startTrip()
+    // -------------------------------------------------------------------------
+
+    @Test
+    @DisplayName("startTrip: ARRIVED -> IN_PROGRESS thành công")
+    void startTrip_Success() {
+        when(tripRepository.findById(arrivedTrip.getId())).thenReturn(Optional.of(arrivedTrip));
+        when(userRepository.findByEmail("driver@test.com")).thenReturn(Optional.of(driverUser));
+        when(driverRepository.findByUserIdWithUser(driverUser.getId())).thenReturn(Optional.of(driver));
+        when(tripRepository.save(any(Trip.class))).thenAnswer(inv -> inv.getArgument(0));
+
+        TripResponse result = tripService.startTrip("driver@test.com", arrivedTrip.getId());
 
         assertThat(result.status()).isEqualTo(TripStatus.IN_PROGRESS);
         assertThat(result.startedAt()).isNotNull();
@@ -197,11 +247,11 @@ class TripServiceTest {
     @DisplayName("startTrip: Không phải driver của trip -> ném DRIVER_NOT_AUTHORIZED")
     void startTrip_WrongDriver_ThrowsException() {
         Driver otherDriver = Driver.builder().id(UUID.randomUUID()).user(driverUser).build();
-        when(tripRepository.findById(acceptedTrip.getId())).thenReturn(Optional.of(acceptedTrip));
+        when(tripRepository.findById(arrivedTrip.getId())).thenReturn(Optional.of(arrivedTrip));
         when(userRepository.findByEmail("driver@test.com")).thenReturn(Optional.of(driverUser));
         when(driverRepository.findByUserIdWithUser(driverUser.getId())).thenReturn(Optional.of(otherDriver));
 
-        assertThatThrownBy(() -> tripService.startTrip("driver@test.com", acceptedTrip.getId()))
+        assertThatThrownBy(() -> tripService.startTrip("driver@test.com", arrivedTrip.getId()))
                 .isInstanceOf(AppException.class);
     }
 

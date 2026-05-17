@@ -37,6 +37,16 @@ enum class DriverHomeStep {
     TRIP_SUMMARY,       // Trip completed – show earnings summary
 }
 
+/**
+ * Sub-phase within TRIP_IN_PROGRESS, mirrors the business flow:
+ * GOING_TO_PICKUP -> ARRIVED_AT_PICKUP -> IN_PROGRESS
+ */
+enum class TripExecutionPhase {
+    GOING_TO_PICKUP,      // Phase 1: Driver đang đến điểm đón (ACCEPTED)
+    ARRIVED_AT_PICKUP,    // Phase 2: Driver đã đến, chờ khách lên xe (ARRIVED)
+    IN_PROGRESS,          // Phase 3: Đang chạy đến điểm đến (IN_PROGRESS)
+}
+
 // ── Incoming trip payload (from WebSocket / mock) ─────────────────────────────
 data class IncomingTripData(
     val tripId: String = "TRIP-HCM-001",
@@ -44,6 +54,8 @@ data class IncomingTripData(
     val destinationAddress: String = "Sân bay Tân Sơn Nhất, Q.Tân Bình",
     val pickupLat: Double = 10.7727,
     val pickupLng: Double = 106.6980,
+    val destLat: Double = 0.0,
+    val destLng: Double = 0.0,
     val distanceToPickupKm: Double = 0.8,
     val totalDistanceKm: Double = 9.5,
     val estimatedEarnings: Long = 85_000,
@@ -63,7 +75,9 @@ data class ActiveTripData(
     val totalDistanceKm: Double,
     val pickupLat: Double,
     val pickupLng: Double,
-    val status: String = "ACCEPTED", // "ACCEPTED", "ARRIVED", "IN_PROGRESS"
+    val destLat: Double = 0.0,
+    val destLng: Double = 0.0,
+    val executionPhase: TripExecutionPhase = TripExecutionPhase.GOING_TO_PICKUP,
     val tripStartTimeMs: Long = System.currentTimeMillis(),
 )
 
@@ -188,6 +202,9 @@ class DriverHomeViewModel @Inject constructor(
                         totalDistanceKm = incoming.totalDistanceKm,
                         pickupLat = incoming.pickupLat,
                         pickupLng = incoming.pickupLng,
+                        destLat = incoming.destLat,
+                        destLng = incoming.destLng,
+                        executionPhase = TripExecutionPhase.GOING_TO_PICKUP,
                     )
                     _uiState.update {
                         it.copy(
@@ -224,16 +241,19 @@ class DriverHomeViewModel @Inject constructor(
 
     // ── Trip in progress ──────────────────────────────────────────────────────
 
-    fun onArriveAtPickup() {
+    /** Phase 1 → 2: Driver xác nhận đã đến điểm đón → gọi API /arrive. */
+    fun onArrivedAtPickup() {
         val active = _uiState.value.activeTrip ?: return
         viewModelScope.launch {
             _uiState.update { it.copy(isLoading = true) }
-            tripRepository.arriveTrip(active.tripId).fold(
+            tripRepository.arriveAtPickup(active.tripId).fold(
                 onSuccess = {
-                    _uiState.update { 
-                        it.copy(
+                    _uiState.update { state ->
+                        state.copy(
                             isLoading = false,
-                            activeTrip = active.copy(status = "ARRIVED")
+                            activeTrip = state.activeTrip?.copy(
+                                executionPhase = TripExecutionPhase.ARRIVED_AT_PICKUP
+                            )
                         )
                     }
                 },
@@ -244,27 +264,30 @@ class DriverHomeViewModel @Inject constructor(
         }
     }
 
+    /** Phase 2 → 3: Driver xác nhận khách lên xe, bắt đầu chạy → gọi API /start. */
     fun onStartTrip() {
         val active = _uiState.value.activeTrip ?: return
         viewModelScope.launch {
             _uiState.update { it.copy(isLoading = true) }
             tripRepository.startTrip(active.tripId).fold(
                 onSuccess = {
-                    _uiState.update { 
-                        it.copy(
+                    _uiState.update { state ->
+                        state.copy(
                             isLoading = false,
-                            activeTrip = active.copy(status = "IN_PROGRESS")
+                            activeTrip = state.activeTrip?.copy(
+                                executionPhase = TripExecutionPhase.IN_PROGRESS
+                            )
                         )
                     }
                 },
                 onFailure = { t ->
-                    _uiState.update { it.copy(isLoading = false, errorMessage = t.message ?: "Không thể bắt đầu chuyến đi") }
+                    _uiState.update { it.copy(isLoading = false, errorMessage = t.message ?: "Không thể bắt đầu chuyến") }
                 }
             )
         }
     }
 
-    /** Driver swipes to complete the active trip → call backend API. */
+    /** Phase 3: Driver swipes to complete the active trip → call backend API. */
     fun onSwipeToComplete() {
         val active = _uiState.value.activeTrip ?: return
         viewModelScope.launch {
