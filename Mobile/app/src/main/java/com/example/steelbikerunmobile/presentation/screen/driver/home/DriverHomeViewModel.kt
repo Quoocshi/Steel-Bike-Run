@@ -483,16 +483,13 @@ class DriverHomeViewModel @Inject constructor(
                         licenseNumber = profile.licenseNumber.orEmpty(),
                     )
                 }
-                // Driver đã online từ phiên trước (backend ghi isOnline=true).
-                // Cần: (1) re-sync lên backend để đảm bảo server biết driver này available,
-                //       (2) bật GPS stream, (3) subscribe WebSocket nhận cuốc.
+                // Driver luôn bắt đầu ở trạng thái offline khi mở app.
+                // Họ cần bấm nút "Bật Online" để bắt đầu nhận cuốc.
+                // Luôn gọi setDriverOnlineStatus(false) để đảm bảo backend đồng bộ trạng thái.
                 if (profile.isOnline) {
                     viewModelScope.launch {
-                        // Re-confirm online status với backend (tránh trường hợp server đã reset)
-                        setDriverOnlineStatusUseCase(true)
+                        setDriverOnlineStatusUseCase(false)
                     }
-                    startLocationStream()
-                    startListeningForTrips()
                 }
 
             }
