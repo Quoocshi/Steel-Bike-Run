@@ -369,10 +369,18 @@ class CustomerHomeViewModel @Inject constructor(
 
             // Lắng nghe DriverFound message
             observeTripUpdatesUseCase.driverFoundMessages().collect { driver ->
+                // Lấy vị trí ban đầu của tài xế từ message
+                // Đây là vị trí tại thời điểm driver accept cuốc - giải quyết race condition
+                // vì WebSocket subscribe có thể bị delay
+                val initialLocation = if (driver.driverLat != null && driver.driverLng != null) {
+                    LatLng(driver.driverLat, driver.driverLng)
+                } else null
+
                 _uiState.update {
                     it.copy(
                         flowStep = CustomerFlowStep.TRACKING,
                         tripStatus = TripStatus.ACCEPTED,
+                        trackedDriverLocation = initialLocation ?: it.trackedDriverLocation,
                         trackedDriver = TrackedDriverInfo(
                             name = driver.driverName,
                             plate = driver.vehiclePlate.ifBlank { "--" },
@@ -386,7 +394,7 @@ class CustomerHomeViewModel @Inject constructor(
                     )
                 }
                 
-                // Start tracking driver's location
+                // Start tracking driver's location (sẽ update realtime sau)
                 startDriverLocationTracking(driver.driverId)
                 
                 // Start listening for status changes
