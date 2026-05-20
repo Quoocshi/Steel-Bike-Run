@@ -1,6 +1,6 @@
 package com.example.steelbikerunmobile.presentation.screen.driver.home
 
-import android.util.Log
+import java.util.Locale
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.steelbikerunmobile.data.repository.DemoMapData
@@ -354,6 +354,12 @@ class DriverHomeViewModel @Inject constructor(
         locationJob = viewModelScope.launch {
             _uiState.update { it.copy(isStreamingLocation = true, errorMessage = null) }
             try {
+                // CRITICAL: Connect WebSocket FIRST before starting the location Flow.
+                // Without this, the first heartbeat(s) are silently dropped because
+                // the STOMP connection hasn't been established yet, leaving Redis empty
+                // until the MatchingEngine's next tick (5 seconds later).
+                streamLocationUseCase.connectWebSocket()
+
                 streamLocationUseCase()
                     .collect { heartbeat ->
                         val loc = heartbeat.location
@@ -369,7 +375,7 @@ class DriverHomeViewModel @Inject constructor(
                         }
                         refreshNearbyDrivers(loc)
                     }
-            } catch (e: SecurityException) {
+            } catch (_: SecurityException) {
                 // Permission bị thu hồi giữa chừng
                 _uiState.update {
                     it.copy(
@@ -483,16 +489,13 @@ class DriverHomeViewModel @Inject constructor(
                         licenseNumber = profile.licenseNumber.orEmpty(),
                     )
                 }
-                // Driver đã online từ phiên trước (backend ghi isOnline=true).
-                // Cần: (1) re-sync lên backend để đảm bảo server biết driver này available,
-                //       (2) bật GPS stream, (3) subscribe WebSocket nhận cuốc.
+                // Driver luôn bắt đầu ở trạng thái offline khi mở app.
+                // Họ cần bấm nút "Bật Online" để bắt đầu nhận cuốc.
+                // Luôn gọi setDriverOnlineStatus(false) để đảm bảo backend đồng bộ trạng thái.
                 if (profile.isOnline) {
                     viewModelScope.launch {
-                        // Re-confirm online status với backend (tránh trường hợp server đã reset)
-                        setDriverOnlineStatusUseCase(true)
+                        setDriverOnlineStatusUseCase(false)
                     }
-                    startLocationStream()
-                    startListeningForTrips()
                 }
 
             }
@@ -512,11 +515,21 @@ class DriverHomeViewModel @Inject constructor(
     /**
      * Subscribe vào WebSocket để lắng nghe cuốc xe mới từ Matching Engine.
      * Gọi khi driver bật Online hoặc sau khi hoàn thành/từ chối cuốc trước đó.
+     *
+     * CRITICAL: Kết nối WebSocket TRƯỚC KHI subscribe. Nếu WebSocket chưa
+     * CONNECTED, subscription sẽ bị gửi lên server trước STOMP CONNECT frame,
+     * dẫn đến server không nhận subscription và driver không nhận được cuốc tiếp theo.
      */
     private fun startListeningForTrips() {
         tripListenerJob?.cancel()
         val driverId = _uiState.value.profile?.driverId ?: return
         tripListenerJob = viewModelScope.launch {
+            // Bước 1: Đảm bảo WebSocket đã CONNECTED trước khi subscribe.
+            // Đợi tối đa 10 giây — đủ để STOMP handshake hoàn tất.
+            observeDriverTripRequestsUseCase.connectAndWaitForConnection(10_000L)
+
+            // Bước 2: Subscribe vào kênh trip requests của driver.
+            // STOMP subscription chỉ có hiệu lực khi WebSocket đã CONNECTED.
             observeDriverTripRequestsUseCase.subscribe(driverId)
             observeDriverTripRequestsUseCase.tripRequests().collect { request ->
                 _uiState.update {
@@ -525,7 +538,7 @@ class DriverHomeViewModel @Inject constructor(
                             tripId = request.tripId,
                             customerName = request.customerName,
                             customerPhone = request.customerPhone,
-                            pickupAddress = "${String.format("%.4f", request.pickupLat)}, ${String.format("%.4f", request.pickupLng)}",
+                            pickupAddress = "${String.format(Locale.US, "%.4f", request.pickupLat)}, ${String.format(Locale.US, "%.4f", request.pickupLng)}",
                             destinationAddress = request.destAddress.ifBlank { "\u0110i\u1ec3m \u0111\u1ebfn" },
                             pickupLat = request.pickupLat,
                             pickupLng = request.pickupLng,

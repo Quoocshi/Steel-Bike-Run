@@ -71,6 +71,8 @@ public class DriverService {
                                 driver.setOnline(true);
                                 driver = driverRepository.save(driver);
                                 cacheRepository.evict(userEmail);
+                                // Xóa stale Redis entry để heartbeat mới ghi lại vị trí chính xác.
+                                driverLocationService.removeDriverLocation(driver.getId().toString());
                         }
 
                         // Cập nhật role sang DRIVER
@@ -110,6 +112,10 @@ public class DriverService {
                                 .build();
 
                 newDriver = driverRepository.save(newDriver);
+
+                // Xóa stale Redis entry (nếu có) để đảm bảo driver được tìm thấy
+                // ngay khi heartbeat đầu tiên đến — ngăn stale location từ session trước.
+                driverLocationService.removeDriverLocation(newDriver.getId().toString());
 
                 // Cập nhật role sang DRIVER
                 user.setRole(UserRole.DRIVER);
@@ -215,6 +221,13 @@ public class DriverService {
                 if (!desired) {
                         driverLocationService.removeDriverLocation(driver.getId().toString());
                         log.info("Driver [{}] location removed from Redis (went offline)", user.getEmail());
+                } else {
+                        // Khi driver online: xóa stale Redis entry (nếu có) để đảm bảo
+                        // heartbeat đầu tiên từ mobile sẽ ghi lại vị trí mới nhất.
+                        // Ngăn stale location (từ session trước) bị dùng sai
+                        // trong trường hợp heartbeat đầu tiên bị trì hoãn (GPS cold-start).
+                        driverLocationService.removeDriverLocation(driver.getId().toString());
+                        log.info("Driver [{}] marked online, stale Redis entry cleared (awaiting fresh heartbeat)", user.getEmail());
                 }
 
                 log.info("Driver [{}] status updated -> {}", user.getEmail(),

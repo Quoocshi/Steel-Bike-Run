@@ -31,6 +31,18 @@ class ObserveDriverTripRequestsUseCase @Inject constructor(
     }
 
     /**
+     * Kết nối WebSocket và đợi cho đến khi CONNECTED trước khi subscribe.
+     * Dùng khi cần đảm bảo WebSocket đã sẵn sàng trước khi thực hiện subscribe.
+     *
+     * @param timeoutMillis thời gian tối đa chờ (mặc định 10 giây)
+     * @return true nếu đã connected, false nếu timeout
+     */
+    suspend fun connectAndWaitForConnection(timeoutMillis: Long = 10_000L): Boolean {
+        stompManager.connect()
+        return stompManager.waitForConnection(timeoutMillis)
+    }
+
+    /**
      * Flow nhận TripRequestMessage từ server.
      * Phát ra khi có cuốc xe mới gần vị trí driver.
      */

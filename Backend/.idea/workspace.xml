@@ -4,7 +4,21 @@
     <option name="autoReloadType" value="SELECTIVE" />
   </component>
   <component name="ChangeListManager">
-    <list default="true" id="7e5a1ada-750e-46e4-ab60-1b3778d2c040" name="Changes" comment="" />
+    <list default="true" id="7e5a1ada-750e-46e4-ab60-1b3778d2c040" name="Changes" comment="">
+      <change afterPath="$PROJECT_DIR$/SteelBikeRunBackend/src/main/java/org/example/steelbikerunbackend/config/StompJwtChannelInterceptor.java" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/SteelBikeRunBackend/src/main/java/org/example/steelbikerunbackend/config/WebSocketConfig.java" beforeDir="false" afterPath="$PROJECT_DIR$/SteelBikeRunBackend/src/main/java/org/example/steelbikerunbackend/config/WebSocketConfig.java" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/SteelBikeRunBackend/src/main/java/org/example/steelbikerunbackend/module/driver/service/DriverService.java" beforeDir="false" afterPath="$PROJECT_DIR$/SteelBikeRunBackend/src/main/java/org/example/steelbikerunbackend/module/driver/service/DriverService.java" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/SteelBikeRunBackend/src/main/resources/application.properties" beforeDir="false" afterPath="$PROJECT_DIR$/SteelBikeRunBackend/src/main/resources/application.properties" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/../Mobile/.idea/deploymentTargetSelector.xml" beforeDir="false" afterPath="$PROJECT_DIR$/../Mobile/.idea/deploymentTargetSelector.xml" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/../Mobile/app/src/main/java/com/example/steelbikerunmobile/data/location/LocationStreamProvider.kt" beforeDir="false" afterPath="$PROJECT_DIR$/../Mobile/app/src/main/java/com/example/steelbikerunmobile/data/location/LocationStreamProvider.kt" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/../Mobile/app/src/main/java/com/example/steelbikerunmobile/data/remote/websocket/StompWebSocketManager.kt" beforeDir="false" afterPath="$PROJECT_DIR$/../Mobile/app/src/main/java/com/example/steelbikerunmobile/data/remote/websocket/StompWebSocketManager.kt" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/../Mobile/app/src/main/java/com/example/steelbikerunmobile/data/repository/DriverRepositoryImpl.kt" beforeDir="false" afterPath="$PROJECT_DIR$/../Mobile/app/src/main/java/com/example/steelbikerunmobile/data/repository/DriverRepositoryImpl.kt" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/../Mobile/app/src/main/java/com/example/steelbikerunmobile/domain/repository/DriverRepository.kt" beforeDir="false" afterPath="$PROJECT_DIR$/../Mobile/app/src/main/java/com/example/steelbikerunmobile/domain/repository/DriverRepository.kt" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/../Mobile/app/src/main/java/com/example/steelbikerunmobile/domain/usecase/driver/StreamLocationUseCase.kt" beforeDir="false" afterPath="$PROJECT_DIR$/../Mobile/app/src/main/java/com/example/steelbikerunmobile/domain/usecase/driver/StreamLocationUseCase.kt" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/../Mobile/app/src/main/java/com/example/steelbikerunmobile/domain/usecase/trip/ObserveDriverTripRequestsUseCase.kt" beforeDir="false" afterPath="$PROJECT_DIR$/../Mobile/app/src/main/java/com/example/steelbikerunmobile/domain/usecase/trip/ObserveDriverTripRequestsUseCase.kt" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/../Mobile/app/src/main/java/com/example/steelbikerunmobile/presentation/screen/driver/home/DriverHomeViewModel.kt" beforeDir="false" afterPath="$PROJECT_DIR$/../Mobile/app/src/main/java/com/example/steelbikerunmobile/presentation/screen/driver/home/DriverHomeViewModel.kt" afterDir="false" />
+    </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
     <option name="HIGHLIGHT_NON_ACTIVE_CHANGELIST" value="false" />
@@ -44,7 +58,7 @@
     "Spring Boot.SteelBikeRunBackendApplication.executor": "Run",
     "codeWithMe.voiceChat.enabledByDefault": "false",
     "com.intellij.ml.llm.matterhorn.ej.ui.settings.DefaultModelSelectionForGA.v1": "true",
-    "git-widget-placeholder": "develop",
+    "git-widget-placeholder": "fix/driver-default-offline",
     "junie.onboarding.icon.badge.shown": "true",
     "kotlin-language-version-configured": "true",
     "last_opened_file_path": "D:/Work/Mobile/Project/SteelBikeRun/Backend",
@@ -76,6 +90,7 @@
       <workItem from="1777385159960" duration="5326000" />
       <workItem from="1778167921361" duration="3621000" />
       <workItem from="1778315005305" duration="2524000" />
+      <workItem from="1779290835697" duration="2311000" />
     </task>
     <servers />
   </component>
