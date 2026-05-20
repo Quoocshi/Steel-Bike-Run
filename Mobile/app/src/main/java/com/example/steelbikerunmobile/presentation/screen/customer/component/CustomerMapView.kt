@@ -1,6 +1,7 @@
 package com.example.steelbikerunmobile.presentation.screen.customer.component
 
 import android.graphics.Bitmap
+import android.graphics.Canvas
 import android.graphics.Paint
 import android.graphics.Typeface
 import androidx.compose.runtime.Composable
@@ -26,10 +27,17 @@ import com.example.steelbikerunmobile.presentation.theme.CustomerPrimary
 import com.example.steelbikerunmobile.presentation.theme.CustomerSecondary
 import com.example.steelbikerunmobile.presentation.theme.DriverPrimary
 import com.example.steelbikerunmobile.presentation.theme.ErrorRed
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
+import okhttp3.OkHttpClient
+import okhttp3.Request
+import org.json.JSONObject
 import org.maplibre.android.MapLibre
 import org.maplibre.android.annotations.IconFactory
 import org.maplibre.android.annotations.Marker
 import org.maplibre.android.annotations.MarkerOptions
+import org.maplibre.android.annotations.Polyline
+import org.maplibre.android.annotations.PolylineOptions
 import org.maplibre.android.camera.CameraPosition
 import org.maplibre.android.camera.CameraUpdateFactory
 import org.maplibre.android.geometry.LatLng
@@ -43,6 +51,28 @@ private val STYLE_URL: String
 
 // ── Extension: domain LatLng → MapLibre LatLng ────────────────────────────────
 private fun DomainLatLng.toMapLibre() = LatLng(latitude, longitude)
+
+// ── Marker bitmap helpers (matching DriverMapView style) ──────────────────────
+private fun createCircleMarkerBitmap(emoji: String, bgColor: Color, sizePx: Int = 96): Bitmap {
+    val bmp = Bitmap.createBitmap(sizePx, sizePx, Bitmap.Config.ARGB_8888)
+    val canvas = Canvas(bmp)
+    val paint = Paint(Paint.ANTI_ALIAS_FLAG)
+    paint.color = bgColor.toArgb()
+    val r = sizePx / 2f
+    canvas.drawCircle(r, r, r, paint)
+    paint.color = android.graphics.Color.WHITE
+    paint.alpha = 80
+    paint.style = Paint.Style.STROKE
+    paint.strokeWidth = 4f
+    canvas.drawCircle(r, r, r - 2f, paint)
+    paint.reset()
+    paint.isAntiAlias = true
+    paint.textAlign = Paint.Align.CENTER
+    paint.textSize = sizePx * 0.46f
+    paint.typeface = Typeface.DEFAULT_BOLD
+    canvas.drawText(emoji, r, r - (paint.ascent() + paint.descent()) / 2f, paint)
+    return bmp
+}
 
 @Composable
 fun CustomerMapView(
@@ -67,14 +97,20 @@ fun CustomerMapView(
     var pickupMarker by remember { mutableStateOf<Marker?>(null) }
     var destinationMarker by remember { mutableStateOf<Marker?>(null) }
     var trackedDriverMarker by remember { mutableStateOf<Marker?>(null) }
+    var routePolyline by remember { mutableStateOf<Polyline?>(null) }
     val nearbyDriverMarkers = remember { mutableStateOf<List<Marker>>(emptyList()) }
 
     // Bitmap caches to avoid recreating on every recomposition
     val iconFactory by remember { mutableStateOf(IconFactory.getInstance(context)) }
-    val pickupBmp = remember { createCircleMarkerBitmap(CustomerPrimary, "📍") }
-    val destBmp = remember { createCircleMarkerBitmap(ErrorRed, "🏁") }
-    val driverBmp = remember { createCircleMarkerBitmap(CustomerSecondary, "🚲") }
-    val trackedBmp = remember { createCircleMarkerBitmap(DriverPrimary, "🚲") }
+    val pickupBmp = remember { createCircleMarkerBitmap("📍", CustomerPrimary) }
+    val destBmp = remember { createCircleMarkerBitmap("🏁", ErrorRed) }
+    val driverBmp = remember { createCircleMarkerBitmap("🚲", CustomerSecondary) }
+    // Tracked driver uses motorcycle emoji like DriverMapView
+    val trackedBmp = remember { createCircleMarkerBitmap("🏍", Color(0xFFE67E22), 112) }
+
+    // Route fetching
+    var routePoints by remember { mutableStateOf<List<LatLng>>(emptyList()) }
+    val okHttpClient = remember { OkHttpClient() }
 
     val mapView = remember {
         MapView(context).apply {
@@ -129,8 +165,8 @@ fun CustomerMapView(
                 } else pickup.toMapLibre()
             }
             CustomerFlowStep.TRACKING -> {
-                // Center on pickup when first entering TRACKING
-                pickup.toMapLibre()
+                // Center on driver when first entering TRACKING
+                trackedDriverLocation?.toMapLibre() ?: pickup.toMapLibre()
             }
             else -> pickup.toMapLibre()
         }
@@ -139,6 +175,51 @@ fun CustomerMapView(
         map.moveCamera(
             CameraUpdateFactory.newLatLngZoom(target, zoom),
         )
+    }
+
+    // ── Fetch route from driver to pickup (matching DriverMapView) ───────────
+    LaunchedEffect(trackedDriverLocation, pickup, flowStep) {
+        if (flowStep == CustomerFlowStep.TRACKING && trackedDriverLocation != null) {
+            withContext(Dispatchers.IO) {
+                try {
+                    val url = "https://rsapi.goong.io/Direction?origin=${trackedDriverLocation.latitude},${trackedDriverLocation.longitude}&destination=${pickup.latitude},${pickup.longitude}&vehicle=bike&api_key=${BuildConfig.GOONG_API_KEY}"
+                    val request = Request.Builder().url(url).build()
+                    val response = okHttpClient.newCall(request).execute()
+                    val body = response.body?.string()
+                    if (response.isSuccessful && body != null) {
+                        val json = JSONObject(body)
+                        val routes = json.optJSONArray("routes")
+                        if (routes != null && routes.length() > 0) {
+                            val encoded = routes.getJSONObject(0).getJSONObject("overview_polyline").getString("points")
+                            routePoints = decodePolyline(encoded)
+                        }
+                    }
+                } catch (e: Exception) {
+                    e.printStackTrace()
+                }
+            }
+        } else {
+            routePoints = emptyList()
+        }
+    }
+
+    // ── Route polyline update ───────────────────────────────────────────────
+    LaunchedEffect(routePoints, mapRef) {
+        val map = mapRef ?: return@LaunchedEffect
+
+        // Remove old route
+        routePolyline?.remove()
+        routePolyline = null
+
+        // Add new route if available
+        if (routePoints.isNotEmpty()) {
+            routePolyline = map.addPolyline(
+                PolylineOptions()
+                    .addAll(routePoints)
+                    .color(android.graphics.Color.parseColor("#4CAF50"))
+                    .width(8f)
+            )
+        }
     }
 
     // ── Core markers setup (pickup, destination) — only on step change ─────
@@ -199,7 +280,7 @@ fun CustomerMapView(
         when {
             flowStep == CustomerFlowStep.TRACKING && trackedDriverLocation != null -> {
                 if (trackedDriverMarker == null) {
-                    // First time — create marker
+                    // First time — create marker with motorcycle emoji
                     trackedDriverMarker = map.addMarker(
                         MarkerOptions()
                             .position(trackedDriverLocation.toMapLibre())
@@ -226,36 +307,42 @@ fun CustomerMapView(
     )
 }
 
-// ── Helpers ────────────────────────────────────────────────────────────────────
+// ── Polyline Decoder (matching DriverMapView) ─────────────────────────────────
+private fun decodePolyline(encoded: String): List<LatLng> {
+    val poly = ArrayList<LatLng>()
+    var index = 0
+    val len = encoded.length
+    var lat = 0
+    var lng = 0
 
-/** Create a 96×96 circular bitmap marker with an emoji label. */
-private fun createCircleMarkerBitmap(bgColor: Color, emoji: String): Bitmap {
-    val size = 96
-    val bitmap = Bitmap.createBitmap(size, size, Bitmap.Config.ARGB_8888)
-    val canvas = android.graphics.Canvas(bitmap)
+    while (index < len) {
+        var b: Int
+        var shift = 0
+        var result = 0
+        do {
+            b = encoded[index++].code - 63
+            result = result or (b and 0x1f shl shift)
+            shift += 5
+        } while (b >= 0x20)
+        val dlat = if (result and 1 != 0) (result shr 1).inv() else result shr 1
+        lat += dlat
 
-    // Background circle
-    val bgPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-        color = bgColor.toArgb()
-        style = Paint.Style.FILL
+        shift = 0
+        result = 0
+        do {
+            b = encoded[index++].code - 63
+            result = result or (b and 0x1f shl shift)
+            shift += 5
+        } while (b >= 0x20)
+        val dlng = if (result and 1 != 0) (result shr 1).inv() else result shr 1
+        lng += dlng
+
+        val p = LatLng(
+            lat.toDouble() / 1E5,
+            lng.toDouble() / 1E5
+        )
+        poly.add(p)
     }
-    val strokePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-        color = android.graphics.Color.WHITE
-        style = Paint.Style.STROKE
-        strokeWidth = 5f
-    }
-    val half = size / 2f
-    canvas.drawCircle(half, half, half - 4f, bgPaint)
-    canvas.drawCircle(half, half, half - 4f, strokePaint)
-
-    // Emoji text
-    val textPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-        textSize = 36f
-        typeface = Typeface.DEFAULT
-        textAlign = Paint.Align.CENTER
-    }
-    canvas.drawText(emoji, half, half + 14f, textPaint)
-
-    return bitmap
+    return poly
 }
 
