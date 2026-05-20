@@ -86,6 +86,41 @@ class DriverServiceTest {
     }
 
     @Test
+    @DisplayName("switchToDriver: Profile cũ, going online — xóa stale Redis entry")
+    void switchToDriver_ExistingProfile_GoingOnline_ClearsRedis() {
+        existingDriver.setOnline(false); // hiện tại offline
+        when(userRepository.findByEmail(customerUser.getEmail())).thenReturn(Optional.of(customerUser));
+        when(driverRepository.findByUserIdWithUser(customerUser.getId())).thenReturn(Optional.of(existingDriver));
+        when(driverRepository.save(any(Driver.class))).thenAnswer(i -> i.getArgument(0));
+        when(jwtUtil.generateToken(customerUser.getEmail(), UserRole.DRIVER.name())).thenReturn("mock-jwt-token");
+
+        SwitchRoleResponse response = driverService.switchToDriver(customerUser.getEmail(), switchRequest);
+
+        assertThat(response.driverProfile().isOnline()).isTrue();
+        // Fix: Xóa stale Redis entry khi chuyển sang Driver mode và going online.
+        verify(driverLocationService).removeDriverLocation(existingDriver.getId().toString());
+    }
+
+    @Test
+    @DisplayName("switchToDriver: Profile mới — xóa stale Redis entry sau khi tạo")
+    void switchToDriver_NewProfile_ClearsRedis() {
+        when(userRepository.findByEmail(customerUser.getEmail())).thenReturn(Optional.of(customerUser));
+        when(driverRepository.findByUserIdWithUser(customerUser.getId())).thenReturn(Optional.empty());
+        when(driverRepository.existsByVehiclePlate(anyString())).thenReturn(false);
+        when(driverRepository.existsByLicenseNumber(anyString())).thenReturn(false);
+        when(driverRepository.save(any(Driver.class))).thenAnswer(i -> i.getArgument(0));
+        when(jwtUtil.generateToken(customerUser.getEmail(), UserRole.DRIVER.name())).thenReturn("mock-jwt-token");
+
+        SwitchRoleResponse response = driverService.switchToDriver(customerUser.getEmail(), switchRequest);
+
+        assertThat(response.driverProfile().isOnline()).isTrue();
+        assertThat(response.driverProfile().isNewProfile()).isTrue();
+        // Fix: Xóa stale Redis entry sau khi tạo profile mới —
+        // đảm bảo heartbeat đầu tiên ghi lại vị trí chính xác.
+        verify(driverLocationService, times(1)).removeDriverLocation(anyString());
+    }
+
+    @Test
     @DisplayName("switchToDriver: Thành công tạo mới profile")
     void switchToDriver_CreateNew() {
         when(userRepository.findByEmail(customerUser.getEmail())).thenReturn(Optional.of(customerUser));
@@ -145,9 +180,8 @@ class DriverServiceTest {
     }
 
     @Test
-    @DisplayName("setOnlineStatus: Offline -> Online transitions properly")
-    void setOnlineStatus_Success() {
-        // existingDriver starts offline, request online -> full update
+    @DisplayName("setOnlineStatus: Offline -> Online — xóa stale Redis entry trước khi heartbeat ghi lại")
+    void setOnlineStatus_GoOnline_ClearsStaleRedisLocation() {
         when(userRepository.findByEmail(driverUser.getEmail())).thenReturn(Optional.of(driverUser));
         when(driverRepository.findByUserIdWithUser(driverUser.getId())).thenReturn(Optional.of(existingDriver));
         when(driverRepository.save(any(Driver.class))).thenAnswer(i -> i.getArgument(0));
@@ -155,9 +189,9 @@ class DriverServiceTest {
         DriverProfileResponse response = driverService.setOnlineStatus(driverUser.getEmail(), new DriverStatusRequest(true));
 
         assertThat(response.isOnline()).isTrue();
-        verify(driverRepository).save(existingDriver);
-        // Normal offline->online transition: Redis entry not yet present, heartbeat will add it
-        verify(driverLocationService, never()).removeDriverLocation(any());
+        // Fix: Luôn xóa stale Redis entry khi going online — đảm bảo heartbeat mới
+        // ghi lại vị trí chính xác nhất, không dùng stale location từ session trước.
+        verify(driverLocationService).removeDriverLocation(existingDriver.getId().toString());
     }
 
     @Test

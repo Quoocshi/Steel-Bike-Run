@@ -38,8 +38,20 @@ class LocationStreamProvider @Inject constructor(
             return@callbackFlow
         }
 
-        val listener = object : LocationListener {
+        // Track whether we've already emitted the first location to avoid duplicates.
+        // requestSingleUpdate and requestLocationUpdates can both fire for the same GPS fix.
+        @Suppress("LocalVariableName")
+        var _emitted = false
+        fun markEmitted() { _emitted = true }
+
+        val singleUpdateListener = object : LocationListener {
+            // FIRES FIRST: Most devices return a GPS fix within milliseconds of
+            // requestSingleUpdate, before the periodic updates start firing.
+            // This solves the "first online switch" race condition where
+            // lastKnownLocation is null (cold GPS start).
             override fun onLocationChanged(location: Location) {
+                if (_emitted) return
+                markEmitted()
                 trySend(
                     LocationHeartbeat(
                         location = LatLng(location.latitude, location.longitude),
@@ -48,7 +60,24 @@ class LocationStreamProvider @Inject constructor(
                     )
                 )
             }
+            @Deprecated("Deprecated in Android SDK")
+            override fun onStatusChanged(provider: String?, status: Int, extras: Bundle?) = Unit
+        }
 
+        val periodicUpdateListener = object : LocationListener {
+            // FIRES SECOND (or first on some devices): Regular interval updates.
+            // Also catches the case where requestSingleUpdate didn't fire on this device.
+            override fun onLocationChanged(location: Location) {
+                if (_emitted) {
+                    trySend(
+                        LocationHeartbeat(
+                            location = LatLng(location.latitude, location.longitude),
+                            heading = location.bearing.takeIf { location.hasBearing() },
+                            speedMetersPerSecond = location.speed.takeIf { location.hasSpeed() }
+                        )
+                    )
+                }
+            }
             @Deprecated("Deprecated in Android SDK")
             override fun onStatusChanged(provider: String?, status: Int, extras: Bundle?) = Unit
         }
@@ -57,10 +86,18 @@ class LocationStreamProvider @Inject constructor(
             locationManager.isProviderEnabled(LocationManager.GPS_PROVIDER) -> LocationManager.GPS_PROVIDER
             else -> LocationManager.NETWORK_PROVIDER
         }
-        val lastKnown = runCatching { locationManager.getLastKnownLocation(provider) }.getOrNull()
-        lastKnown?.let { listener.onLocationChanged(it) }
-        locationManager.requestLocationUpdates(provider, intervalMillis, 5f, listener)
 
-        awaitClose { locationManager.removeUpdates(listener) }
+        // PHASE 1: Force immediate GPS fix. Solves cold-start / null lastKnownLocation issue.
+        // On most devices this fires within milliseconds. On slow devices it may take a few seconds.
+        locationManager.requestSingleUpdate(provider, singleUpdateListener, null)
+
+        // PHASE 2: Regular interval updates as backup / continuation.
+        // Also fires the first location on some devices where requestSingleUpdate is not reliable.
+        locationManager.requestLocationUpdates(provider, intervalMillis, 5f, periodicUpdateListener)
+
+        awaitClose {
+            locationManager.removeUpdates(singleUpdateListener)
+            locationManager.removeUpdates(periodicUpdateListener)
+        }
     }
 }

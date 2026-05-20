@@ -13,6 +13,7 @@ import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.Response
@@ -87,13 +88,14 @@ class StompWebSocketManager @Inject constructor(
             object : WebSocketListener() {
                 override fun onOpen(ws: WebSocket, response: Response) {
                     Log.d(TAG, "WebSocket opened, sending STOMP CONNECT")
-                    val connectFrame = buildFrame(
-                        "CONNECT",
-                        mapOf(
-                            "accept-version" to STOMP_VERSION,
-                            "heart-beat" to "10000,10000"
-                        )
+                    val connectHeaders = mutableMapOf(
+                        "accept-version" to STOMP_VERSION,
+                        "heart-beat" to "10000,10000"
                     )
+                    // Gửi JWT trong STOMP CONNECT frame header
+                    // StompJwtChannelInterceptor sẽ đọc và xác thực
+                    token?.let { connectHeaders["Authorization"] = "Bearer $it" }
+                    val connectFrame = buildFrame("CONNECT", connectHeaders)
                     ws.send(connectFrame)
                 }
 
@@ -119,6 +121,27 @@ class StompWebSocketManager @Inject constructor(
 
         // Suspend chờ nhận được CONNECTED từ server
         connectionState.first { it == ConnectionState.CONNECTED || it == ConnectionState.DISCONNECTED || it == ConnectionState.ERROR }
+    }
+
+    /**
+     * Đợi cho đến khi WebSocket đạt trạng thái CONNECTED.
+     * Dùng khi cần đảm bảo WebSocket đã sẵn sàng trước khi thực hiện action khác.
+     *
+     * @param timeoutMillis thời gian tối đa chờ
+     * @return true nếu đã CONNECTED, false nếu timeout hoặc lỗi
+     */
+    suspend fun waitForConnection(timeoutMillis: Long = 10_000L): Boolean {
+        return withContext(Dispatchers.IO) {
+            if (isConnected) return@withContext true
+            try {
+                val result = connectionState.first(timeoutMillis) {
+                    it == ConnectionState.CONNECTED || it == ConnectionState.DISCONNECTED || it == ConnectionState.ERROR
+                }
+                result == ConnectionState.CONNECTED
+            } catch (_: Exception) {
+                false
+            }
+        }
     }
 
     /**

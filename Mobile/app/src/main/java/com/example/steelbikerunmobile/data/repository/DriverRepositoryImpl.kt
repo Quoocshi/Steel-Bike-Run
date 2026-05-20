@@ -97,6 +97,10 @@ class DriverRepositoryImpl @Inject constructor(
         )
     }
 
+    override suspend fun connectWebSocket() {
+        stompWebSocketManager.connect()
+    }
+
     override fun observeCurrentH3Index(): Flow<String?> = _currentH3Index.asStateFlow()
 
     override suspend fun getNearbyDrivers(latitude: Double, longitude: Double): Result<List<NearbyDriver>> {

@@ -1,6 +1,8 @@
 package org.example.steelbikerunbackend.config;
 
+import lombok.RequiredArgsConstructor;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.messaging.simp.config.ChannelRegistration;
 import org.springframework.messaging.simp.config.MessageBrokerRegistry;
 import org.springframework.web.socket.config.annotation.EnableWebSocketMessageBroker;
 import org.springframework.web.socket.config.annotation.StompEndpointRegistry;
@@ -25,7 +27,10 @@ import org.springframework.web.socket.config.annotation.WebSocketMessageBrokerCo
  */
 @Configuration
 @EnableWebSocketMessageBroker
+@RequiredArgsConstructor
 public class WebSocketConfig implements WebSocketMessageBrokerConfigurer {
+
+    private final StompJwtChannelInterceptor stompJwtChannelInterceptor;
 
     @Override
     public void configureMessageBroker(MessageBrokerRegistry config) {
@@ -46,5 +51,11 @@ public class WebSocketConfig implements WebSocketMessageBrokerConfigurer {
         // Endpoint thuần WebSocket (không SockJS) cho mobile client
         registry.addEndpoint("/ws")
                 .setAllowedOriginPatterns("*");
+    }
+
+    @Override
+    public void configureClientInboundChannel(ChannelRegistration registration) {
+        // Đăng ký interceptor để xác thực JWT từ STOMP CONNECT frame
+        registration.interceptors(stompJwtChannelInterceptor);
     }
 }
