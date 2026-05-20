@@ -108,7 +108,13 @@ class DriverServiceTest {
         when(driverRepository.findByUserIdWithUser(customerUser.getId())).thenReturn(Optional.empty());
         when(driverRepository.existsByVehiclePlate(anyString())).thenReturn(false);
         when(driverRepository.existsByLicenseNumber(anyString())).thenReturn(false);
-        when(driverRepository.save(any(Driver.class))).thenAnswer(i -> i.getArgument(0));
+        when(driverRepository.save(any(Driver.class))).thenAnswer(i -> {
+            Driver d = i.getArgument(0);
+            if (d.getId() == null) {
+                d.setId(UUID.randomUUID());
+            }
+            return d;
+        });
         when(jwtUtil.generateToken(customerUser.getEmail(), UserRole.DRIVER.name())).thenReturn("mock-jwt-token");
 
         SwitchRoleResponse response = driverService.switchToDriver(customerUser.getEmail(), switchRequest);
@@ -125,7 +131,13 @@ class DriverServiceTest {
     void switchToDriver_CreateNew() {
         when(userRepository.findByEmail(customerUser.getEmail())).thenReturn(Optional.of(customerUser));
         when(driverRepository.findByUserIdWithUser(customerUser.getId())).thenReturn(Optional.empty());
-        when(driverRepository.save(any(Driver.class))).thenAnswer(i -> i.getArgument(0));
+        when(driverRepository.save(any(Driver.class))).thenAnswer(i -> {
+            Driver d = i.getArgument(0);
+            if (d.getId() == null) {
+                d.setId(UUID.randomUUID());
+            }
+            return d;
+        });
         when(jwtUtil.generateToken(customerUser.getEmail(), UserRole.DRIVER.name())).thenReturn("mock-jwt-token");
 
         SwitchRoleResponse response = driverService.switchToDriver(customerUser.getEmail(), switchRequest);
