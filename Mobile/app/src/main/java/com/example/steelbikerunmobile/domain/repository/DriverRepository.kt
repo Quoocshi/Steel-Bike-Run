@@ -34,6 +34,15 @@ interface DriverRepository {
     suspend fun sendLocationHeartbeat(heartbeat: LocationHeartbeat)
 
     /**
+     * Connect the WebSocket before starting the location Flow.
+     * MUST be called before [observeLocation] starts sending heartbeats,
+     * otherwise the first heartbeat(s) will be silently dropped.
+     * This solves the "first online switch" race condition where the driver
+     * is online (DB) but Redis has no location yet.
+     */
+    suspend fun connectWebSocket()
+
+    /**
      * Stream H3 cell index hiện tại của tài xế, được cập nhật sau mỗi heartbeat thành công.
      * Giá trị null khi chưa có heartbeat nào thành công hoặc tài xế offline.
      * Backend tính h3Index (resolution=9) từ lat/lng — mobile chỉ hiển thị kết quả.
