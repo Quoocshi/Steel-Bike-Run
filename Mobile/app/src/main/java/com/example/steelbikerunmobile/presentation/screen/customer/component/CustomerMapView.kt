@@ -28,16 +28,14 @@ import com.example.steelbikerunmobile.presentation.theme.DriverPrimary
 import com.example.steelbikerunmobile.presentation.theme.ErrorRed
 import org.maplibre.android.MapLibre
 import org.maplibre.android.annotations.IconFactory
+import org.maplibre.android.annotations.Marker
 import org.maplibre.android.annotations.MarkerOptions
-import org.maplibre.android.annotations.PolygonOptions
 import org.maplibre.android.camera.CameraPosition
 import org.maplibre.android.camera.CameraUpdateFactory
 import org.maplibre.android.geometry.LatLng
 import org.maplibre.android.maps.MapView
 import org.maplibre.android.maps.MapLibreMap
 import org.maplibre.android.maps.Style
-import kotlin.math.cos
-import kotlin.math.sin
 
 // ── Goong Map style URL ───────────────────────────────────────────────────────
 private val STYLE_URL: String
@@ -64,6 +62,19 @@ fun CustomerMapView(
 
     // Hold MapLibreMap reference once the async callback completes
     var mapRef by remember { mutableStateOf<MapLibreMap?>(null) }
+
+    // Track markers individually instead of clearing all
+    var pickupMarker by remember { mutableStateOf<Marker?>(null) }
+    var destinationMarker by remember { mutableStateOf<Marker?>(null) }
+    var trackedDriverMarker by remember { mutableStateOf<Marker?>(null) }
+    val nearbyDriverMarkers = remember { mutableStateOf<List<Marker>>(emptyList()) }
+
+    // Bitmap caches to avoid recreating on every recomposition
+    val iconFactory by remember { mutableStateOf(IconFactory.getInstance(context)) }
+    val pickupBmp = remember { createCircleMarkerBitmap(CustomerPrimary, "📍") }
+    val destBmp = remember { createCircleMarkerBitmap(ErrorRed, "🏁") }
+    val driverBmp = remember { createCircleMarkerBitmap(CustomerSecondary, "🚲") }
+    val trackedBmp = remember { createCircleMarkerBitmap(DriverPrimary, "🚲") }
 
     val mapView = remember {
         MapView(context).apply {
@@ -104,82 +115,97 @@ fun CustomerMapView(
     // ── Camera animation ────────────────────────────────────────────────────
     LaunchedEffect(trackedDriverLocation, flowStep, mapRef, recenterTrigger) {
         val map = mapRef ?: return@LaunchedEffect
-        // Wait for style to be loaded before animating camera
-        // Otherwise animation might be ignored if map is not ready
-        map.getStyle { _ ->
-            val target = when {
-                flowStep == CustomerFlowStep.TRACKING && trackedDriverLocation != null ->
-                    trackedDriverLocation.toMapLibre()
-                flowStep == CustomerFlowStep.TRIP_PREVIEW && destination != null ->
-                    LatLng(
-                        (pickup.latitude + destination.latitude) / 2,
-                        (pickup.longitude + destination.longitude) / 2,
-                    )
-                else -> pickup.toMapLibre()
-            }
-            val zoom = if (flowStep == CustomerFlowStep.TRIP_PREVIEW) 13.5 else 15.0
-            map.animateCamera(
-                CameraUpdateFactory.newLatLngZoom(target, zoom),
-                800,
+        val target = when {
+            flowStep == CustomerFlowStep.TRACKING && trackedDriverLocation != null ->
+                trackedDriverLocation.toMapLibre()
+            flowStep == CustomerFlowStep.TRIP_PREVIEW && destination != null ->
+                LatLng(
+                    (pickup.latitude + destination.latitude) / 2,
+                    (pickup.longitude + destination.longitude) / 2,
+                )
+            else -> pickup.toMapLibre()
+        }
+        val zoom = if (flowStep == CustomerFlowStep.TRIP_PREVIEW) 13.5 else 15.0
+        map.animateCamera(
+            CameraUpdateFactory.newLatLngZoom(target, zoom),
+            800,
+        )
+    }
+
+    // ── Core markers setup (pickup, destination) — only on step change ─────
+    LaunchedEffect(pickup, destination, flowStep, mapRef) {
+        val map = mapRef ?: return@LaunchedEffect
+
+        // Pickup marker — always present
+        pickupMarker?.remove()
+        pickupMarker = map.addMarker(
+            MarkerOptions()
+                .position(pickup.toMapLibre())
+                .icon(iconFactory.fromBitmap(pickupBmp))
+                .title("Điểm đón của bạn")
+        )
+
+        // Destination marker — only when needed
+        destinationMarker?.remove()
+        destinationMarker = if (destination != null && flowStep.ordinal >= CustomerFlowStep.TRIP_PREVIEW.ordinal) {
+            map.addMarker(
+                MarkerOptions()
+                    .position(destination.toMapLibre())
+                    .icon(iconFactory.fromBitmap(destBmp))
+                    .title("Điểm đến")
             )
+        } else null
+    }
+
+    // ── Nearby driver markers — only on HOME/SEARCHING ─────────────────────
+    LaunchedEffect(nearbyDrivers, flowStep, mapRef) {
+        val map = mapRef ?: return@LaunchedEffect
+
+        // Only show nearby drivers on HOME or SEARCHING steps
+        if (flowStep == CustomerFlowStep.HOME || flowStep == CustomerFlowStep.SEARCHING) {
+            // Remove old nearby markers
+            nearbyDriverMarkers.value.forEach { it.remove() }
+
+            // Add new nearby markers
+            nearbyDriverMarkers.value = nearbyDrivers.map { driver ->
+                map.addMarker(
+                    MarkerOptions()
+                        .position(driver.location.toMapLibre())
+                        .icon(iconFactory.fromBitmap(driverBmp))
+                        .title(driver.fullName)
+                        .snippet("${driver.vehiclePlate ?: ""} · ${"%.1f".format(driver.rating)}★")
+                )
+            }
+        } else {
+            // Remove all nearby driver markers when not on HOME/SEARCHING
+            nearbyDriverMarkers.value.forEach { it.remove() }
+            nearbyDriverMarkers.value = emptyList()
         }
     }
 
-    // ── Markers & overlays ──────────────────────────────────────────────────
-    LaunchedEffect(
-        pickup, destination, nearbyDrivers,
-        trackedDriverLocation, flowStep, mapRef
-    ) {
+    // ── Tracked driver marker — update position without clearing ────────────
+    LaunchedEffect(trackedDriverLocation, flowStep, mapRef) {
         val map = mapRef ?: return@LaunchedEffect
-        // Wait for style to be loaded before adding markers
-        map.getStyle { _ ->
-            map.clear()
 
-            val iconFactory = IconFactory.getInstance(context)
-            val pickupBmp = createCircleMarkerBitmap(CustomerPrimary, "📍")
-            val destBmp   = createCircleMarkerBitmap(ErrorRed, "🏁")
-            val driverBmp = createCircleMarkerBitmap(CustomerSecondary, "🚲")
-            val trackedBmp = createCircleMarkerBitmap(DriverPrimary, "🚲")
-
-            // Nearby driver markers
-            if (flowStep == CustomerFlowStep.HOME || flowStep == CustomerFlowStep.SEARCHING) {
-                nearbyDrivers.forEach { driver ->
-                    map.addMarker(
+        when {
+            flowStep == CustomerFlowStep.TRACKING && trackedDriverLocation != null -> {
+                if (trackedDriverMarker == null) {
+                    // First time — create marker
+                    trackedDriverMarker = map.addMarker(
                         MarkerOptions()
-                            .position(driver.location.toMapLibre())
-                            .icon(iconFactory.fromBitmap(driverBmp))
-                            .title(driver.fullName)
-                            .snippet("${driver.vehiclePlate ?: ""} · ${"%.1f".format(driver.rating)}★")
+                            .position(trackedDriverLocation.toMapLibre())
+                            .icon(iconFactory.fromBitmap(trackedBmp))
+                            .title("Tài xế của bạn")
                     )
+                } else {
+                    // Update existing marker position
+                    trackedDriverMarker?.position = trackedDriverLocation.toMapLibre()
                 }
             }
-
-            // Pickup marker
-            map.addMarker(
-                MarkerOptions()
-                    .position(pickup.toMapLibre())
-                    .icon(iconFactory.fromBitmap(pickupBmp))
-                    .title("Điểm đón của bạn")
-            )
-
-            // Destination marker
-            if (destination != null && flowStep.ordinal >= CustomerFlowStep.TRIP_PREVIEW.ordinal) {
-                map.addMarker(
-                    MarkerOptions()
-                        .position(destination.toMapLibre())
-                        .icon(iconFactory.fromBitmap(destBmp))
-                        .title("Điểm đến")
-                )
-            }
-
-            // Tracked driver marker
-            if (flowStep == CustomerFlowStep.TRACKING && trackedDriverLocation != null) {
-                map.addMarker(
-                    MarkerOptions()
-                        .position(trackedDriverLocation.toMapLibre())
-                        .icon(iconFactory.fromBitmap(trackedBmp))
-                        .title("Tài xế của bạn")
-                )
+            else -> {
+                // Remove marker when not tracking
+                trackedDriverMarker?.remove()
+                trackedDriverMarker = null
             }
         }
     }
