@@ -5,7 +5,6 @@ import com.example.steelbikerunmobile.data.remote.NetworkErrorMapper
 import com.example.steelbikerunmobile.data.remote.api.DriverApiService
 import com.example.steelbikerunmobile.data.remote.dto.DriverProfileDto
 import com.example.steelbikerunmobile.data.remote.dto.DriverStatusRequestDto
-import com.example.steelbikerunmobile.data.remote.dto.LocationUpdateRequestDto
 import com.example.steelbikerunmobile.data.remote.dto.NearbyDriverDto
 import com.example.steelbikerunmobile.data.remote.dto.SwitchDriverRequestDto
 import com.example.steelbikerunmobile.data.remote.dto.SwitchRoleResponseDto
@@ -87,27 +86,15 @@ class DriverRepositoryImpl @Inject constructor(
     override fun observeLocation(): Flow<LocationHeartbeat> = locationStreamProvider.observeLocation()
 
     override suspend fun sendLocationHeartbeat(heartbeat: LocationHeartbeat) {
-        // Ghi vị trí lên Backend qua REST (POST /api/v1/driver/location).
-        // Backend ghi vào Redis (write-behind Postgres mỗi 30s).
-        //
-        // WebSocket KHÔNG được dùng ở đây vì:
-        //   1. Backend chưa có STOMP endpoint cho driver location (placeholder only).
-        //   2. WebSocketManager.connect() dùng runBlocking trên coroutine dispatcher
-        //      → tiềm ẩn deadlock trên Main thread.
-        // WS sẽ được kích hoạt khi backend triển khai WebSocket Matching Engine.
-        runCatching {
-            val response = driverApiService.postLocation(
-                LocationUpdateRequestDto(
-                    latitude = heartbeat.location.latitude,
-                    longitude = heartbeat.location.longitude,
-                    heading = heartbeat.heading,
-                    speed = heartbeat.speedMetersPerSecond
-                )
-            )
-            // Server tính h3Index từ lat/lng (resolution=9, ~174m hexagon).
-            // Cập nhật flow để ViewModel có thể hiển thị cell hiện tại trên bản đồ.
-            response.data?.h3Index?.let { _currentH3Index.value = it }
-        }
+        // Gửi location qua WebSocket STOMP → backend push cho customer track realtime.
+        // LocationWebSocketHandler nhận /app/driver.location → convertAndSend
+        // /topic/driver/{driverId}/location → customer subscribe.
+        stompWebSocketManager.sendLocationHeartbeat(
+            latitude = heartbeat.location.latitude,
+            longitude = heartbeat.location.longitude,
+            heading = heartbeat.heading,
+            speed = heartbeat.speedMetersPerSecond
+        )
     }
 
     override fun observeCurrentH3Index(): Flow<String?> = _currentH3Index.asStateFlow()

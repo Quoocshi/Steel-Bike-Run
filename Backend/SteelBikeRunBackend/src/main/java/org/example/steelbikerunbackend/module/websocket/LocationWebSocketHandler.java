@@ -4,6 +4,7 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.example.steelbikerunbackend.module.driver.dto.LocationUpdateRequest;
 import org.example.steelbikerunbackend.module.driver.service.DriverLocationService;
+import org.example.steelbikerunbackend.module.websocket.dto.DriverLocationUpdateResponse;
 import org.example.steelbikerunbackend.module.websocket.dto.LocationHeartbeat;
 import org.springframework.messaging.handler.annotation.MessageMapping;
 import org.springframework.messaging.simp.SimpMessageHeaderAccessor;
@@ -85,12 +86,22 @@ public class LocationWebSocketHandler {
 
         try {
             var response = driverLocationService.updateLocation(driverEmail, request);
-            
-            // Push ngược lại vị trí cho customer tracking qua kênh của driver
+
+            // 1. Push raw heartbeat to customer tracking channel
             messagingTemplate.convertAndSend("/topic/driver/" + response.driverId() + "/location", heartbeat);
-            
-            log.debug("[WS Location] Driver [{}] -> lat={}, lng={}",
-                    driverEmail, heartbeat.getLatitude(), heartbeat.getLongitude());
+
+            // 2. Push response with h3Index back to driver so they can update their H3 cell display
+            var driverResponse = DriverLocationUpdateResponse.builder()
+                    .driverId(response.driverId())
+                    .latitude(response.latitude())
+                    .longitude(response.longitude())
+                    .h3Index(response.h3Index())
+                    .updatedAt(response.updatedAt().toString())
+                    .build();
+            messagingTemplate.convertAndSend("/topic/driver/" + response.driverId() + "/location-update", driverResponse);
+
+            log.debug("[WS Location] Driver [{}] -> lat={}, lng={}, h3={}",
+                    driverEmail, heartbeat.getLatitude(), heartbeat.getLongitude(), response.h3Index());
         } catch (Exception e) {
             // Không throw exception ở WebSocket handler — chỉ log để tránh disconnect session
             log.error("[WS Location] Lỗi khi cập nhật vị trí cho driver [{}]: {}",
