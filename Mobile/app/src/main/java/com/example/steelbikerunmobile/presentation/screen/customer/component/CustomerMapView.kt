@@ -25,7 +25,6 @@ import com.example.steelbikerunmobile.domain.model.NearbyDriver
 import com.example.steelbikerunmobile.presentation.screen.customer.home.CustomerFlowStep
 import com.example.steelbikerunmobile.presentation.theme.CustomerPrimary
 import com.example.steelbikerunmobile.presentation.theme.CustomerSecondary
-import com.example.steelbikerunmobile.presentation.theme.DriverPrimary
 import com.example.steelbikerunmobile.presentation.theme.ErrorRed
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -36,7 +35,6 @@ import org.maplibre.android.MapLibre
 import org.maplibre.android.annotations.IconFactory
 import org.maplibre.android.annotations.Marker
 import org.maplibre.android.annotations.MarkerOptions
-import org.maplibre.android.annotations.Polyline
 import org.maplibre.android.annotations.PolylineOptions
 import org.maplibre.android.camera.CameraPosition
 import org.maplibre.android.camera.CameraUpdateFactory
@@ -52,8 +50,8 @@ private val STYLE_URL: String
 // ── Extension: domain LatLng → MapLibre LatLng ────────────────────────────────
 private fun DomainLatLng.toMapLibre() = LatLng(latitude, longitude)
 
-// ── Marker bitmap helpers (matching DriverMapView style) ──────────────────────
-private fun createCircleMarkerBitmap(emoji: String, bgColor: Color, sizePx: Int = 96): Bitmap {
+// ── Marker bitmap helper (same as DriverMapView) ──────────────────────────────
+private fun createCircleMarkerBitmap(emoji: String, bgColor: Color, sizePx: Int = 112): Bitmap {
     val bmp = Bitmap.createBitmap(sizePx, sizePx, Bitmap.Config.ARGB_8888)
     val canvas = Canvas(bmp)
     val paint = Paint(Paint.ANTI_ALIAS_FLAG)
@@ -97,20 +95,16 @@ fun CustomerMapView(
     var pickupMarker by remember { mutableStateOf<Marker?>(null) }
     var destinationMarker by remember { mutableStateOf<Marker?>(null) }
     var trackedDriverMarker by remember { mutableStateOf<Marker?>(null) }
-    var routePolyline by remember { mutableStateOf<Polyline?>(null) }
+    var routePolyline by remember { mutableStateOf<org.maplibre.android.annotations.Polyline?>(null) }
     val nearbyDriverMarkers = remember { mutableStateOf<List<Marker>>(emptyList()) }
 
-    // Bitmap caches to avoid recreating on every recomposition
+    // Bitmap caches — use same style as DriverMapView
     val iconFactory by remember { mutableStateOf(IconFactory.getInstance(context)) }
-    val pickupBmp = remember { createCircleMarkerBitmap("📍", CustomerPrimary) }
-    val destBmp = remember { createCircleMarkerBitmap("🏁", ErrorRed) }
-    val driverBmp = remember { createCircleMarkerBitmap("🚲", CustomerSecondary) }
-    // Tracked driver uses motorcycle emoji like DriverMapView
+    val pickupBmp = remember { createCircleMarkerBitmap("📍", Color(0xFFE53935), 112) }
+    val destBmp = remember { createCircleMarkerBitmap("🏁", ErrorRed, 112) }
+    val driverBmp = remember { createCircleMarkerBitmap("🚲", CustomerSecondary, 96) }
+    // Tracked driver: use 🏍 motorcycle emoji with orange color (same as driver screen)
     val trackedBmp = remember { createCircleMarkerBitmap("🏍", Color(0xFFE67E22), 112) }
-
-    // Route fetching
-    var routePoints by remember { mutableStateOf<List<LatLng>>(emptyList()) }
-    val okHttpClient = remember { OkHttpClient() }
 
     val mapView = remember {
         MapView(context).apply {
@@ -149,12 +143,9 @@ fun CustomerMapView(
     }
 
     // ── Camera animation ────────────────────────────────────────────────────
-    // Only animate camera on flow step change or user recenter request.
-    // NOT on every driver location update — that would interrupt tile loading.
     LaunchedEffect(flowStep, mapRef, recenterTrigger) {
         val map = mapRef ?: return@LaunchedEffect
 
-        // Determine initial position for this flow step
         val target = when (flowStep) {
             CustomerFlowStep.TRIP_PREVIEW -> {
                 if (destination != null) {
@@ -165,8 +156,7 @@ fun CustomerMapView(
                 } else pickup.toMapLibre()
             }
             CustomerFlowStep.TRACKING -> {
-                // Center on driver when first entering TRACKING
-                trackedDriverLocation?.toMapLibre() ?: pickup.toMapLibre()
+                pickup.toMapLibre()
             }
             else -> pickup.toMapLibre()
         }
@@ -177,9 +167,12 @@ fun CustomerMapView(
         )
     }
 
-    // ── Fetch route from driver to pickup (matching DriverMapView) ───────────
-    LaunchedEffect(trackedDriverLocation, pickup, flowStep) {
-        if (flowStep == CustomerFlowStep.TRACKING && trackedDriverLocation != null) {
+    // ── Route fetching (driver → pickup) ───────────────────────────────────
+    var routePoints by remember { mutableStateOf<List<LatLng>>(emptyList()) }
+    val okHttpClient = remember { OkHttpClient() }
+
+    LaunchedEffect(trackedDriverLocation, pickup) {
+        if (trackedDriverLocation != null) {
             withContext(Dispatchers.IO) {
                 try {
                     val url = "https://rsapi.goong.io/Direction?origin=${trackedDriverLocation.latitude},${trackedDriverLocation.longitude}&destination=${pickup.latitude},${pickup.longitude}&vehicle=bike&api_key=${BuildConfig.GOONG_API_KEY}"
@@ -203,26 +196,7 @@ fun CustomerMapView(
         }
     }
 
-    // ── Route polyline update ───────────────────────────────────────────────
-    LaunchedEffect(routePoints, mapRef) {
-        val map = mapRef ?: return@LaunchedEffect
-
-        // Remove old route
-        routePolyline?.remove()
-        routePolyline = null
-
-        // Add new route if available
-        if (routePoints.isNotEmpty()) {
-            routePolyline = map.addPolyline(
-                PolylineOptions()
-                    .addAll(routePoints)
-                    .color(android.graphics.Color.parseColor("#4CAF50"))
-                    .width(8f)
-            )
-        }
-    }
-
-    // ── Core markers setup (pickup, destination) — only on step change ─────
+    // ── Core markers setup (pickup, destination) ────────────────────────────
     LaunchedEffect(pickup, destination, flowStep, mapRef) {
         val map = mapRef ?: return@LaunchedEffect
 
@@ -247,16 +221,28 @@ fun CustomerMapView(
         } else null
     }
 
+    // ── Route polyline update ───────────────────────────────────────────────
+    LaunchedEffect(routePoints, mapRef) {
+        val map = mapRef ?: return@LaunchedEffect
+
+        routePolyline?.remove()
+        routePolyline = if (routePoints.isNotEmpty() && flowStep == CustomerFlowStep.TRACKING) {
+            map.addPolyline(
+                PolylineOptions()
+                    .addAll(routePoints)
+                    .color(android.graphics.Color.parseColor("#4CAF50"))
+                    .width(8f)
+            )
+        } else null
+    }
+
     // ── Nearby driver markers — only on HOME/SEARCHING ─────────────────────
     LaunchedEffect(nearbyDrivers, flowStep, mapRef) {
         val map = mapRef ?: return@LaunchedEffect
 
-        // Only show nearby drivers on HOME or SEARCHING steps
         if (flowStep == CustomerFlowStep.HOME || flowStep == CustomerFlowStep.SEARCHING) {
-            // Remove old nearby markers
             nearbyDriverMarkers.value.forEach { it.remove() }
 
-            // Add new nearby markers
             nearbyDriverMarkers.value = nearbyDrivers.map { driver ->
                 map.addMarker(
                     MarkerOptions()
@@ -267,20 +253,18 @@ fun CustomerMapView(
                 )
             }
         } else {
-            // Remove all nearby driver markers when not on HOME/SEARCHING
             nearbyDriverMarkers.value.forEach { it.remove() }
             nearbyDriverMarkers.value = emptyList()
         }
     }
 
-    // ── Tracked driver marker — update position without clearing ────────────
+    // ── Tracked driver marker — 🏍 motorcycle, update position in-place ─────
     LaunchedEffect(trackedDriverLocation, flowStep, mapRef) {
         val map = mapRef ?: return@LaunchedEffect
 
         when {
             flowStep == CustomerFlowStep.TRACKING && trackedDriverLocation != null -> {
                 if (trackedDriverMarker == null) {
-                    // First time — create marker with motorcycle emoji
                     trackedDriverMarker = map.addMarker(
                         MarkerOptions()
                             .position(trackedDriverLocation.toMapLibre())
@@ -288,12 +272,10 @@ fun CustomerMapView(
                             .title("Tài xế của bạn")
                     )
                 } else {
-                    // Update existing marker position
                     trackedDriverMarker?.position = trackedDriverLocation.toMapLibre()
                 }
             }
             else -> {
-                // Remove marker when not tracking
                 trackedDriverMarker?.remove()
                 trackedDriverMarker = null
             }
@@ -307,7 +289,7 @@ fun CustomerMapView(
     )
 }
 
-// ── Polyline Decoder (matching DriverMapView) ─────────────────────────────────
+// ── Polyline Decoder ────────────────────────────────────────────────────────────
 private fun decodePolyline(encoded: String): List<LatLng> {
     val poly = ArrayList<LatLng>()
     var index = 0
@@ -337,11 +319,7 @@ private fun decodePolyline(encoded: String): List<LatLng> {
         val dlng = if (result and 1 != 0) (result shr 1).inv() else result shr 1
         lng += dlng
 
-        val p = LatLng(
-            lat.toDouble() / 1E5,
-            lng.toDouble() / 1E5
-        )
-        poly.add(p)
+        poly.add(LatLng(lat.toDouble() / 1E5, lng.toDouble() / 1E5))
     }
     return poly
 }
