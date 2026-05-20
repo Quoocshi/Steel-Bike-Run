@@ -113,22 +113,31 @@ fun CustomerMapView(
     }
 
     // ── Camera animation ────────────────────────────────────────────────────
-    LaunchedEffect(trackedDriverLocation, flowStep, mapRef, recenterTrigger) {
+    // Only animate camera on flow step change or user recenter request.
+    // NOT on every driver location update — that would interrupt tile loading.
+    LaunchedEffect(flowStep, mapRef, recenterTrigger) {
         val map = mapRef ?: return@LaunchedEffect
-        val target = when {
-            flowStep == CustomerFlowStep.TRACKING && trackedDriverLocation != null ->
-                trackedDriverLocation.toMapLibre()
-            flowStep == CustomerFlowStep.TRIP_PREVIEW && destination != null ->
-                LatLng(
-                    (pickup.latitude + destination.latitude) / 2,
-                    (pickup.longitude + destination.longitude) / 2,
-                )
+
+        // Determine initial position for this flow step
+        val target = when (flowStep) {
+            CustomerFlowStep.TRIP_PREVIEW -> {
+                if (destination != null) {
+                    LatLng(
+                        (pickup.latitude + destination.latitude) / 2,
+                        (pickup.longitude + destination.longitude) / 2,
+                    )
+                } else pickup.toMapLibre()
+            }
+            CustomerFlowStep.TRACKING -> {
+                // Center on pickup when first entering TRACKING
+                pickup.toMapLibre()
+            }
             else -> pickup.toMapLibre()
         }
+
         val zoom = if (flowStep == CustomerFlowStep.TRIP_PREVIEW) 13.5 else 15.0
-        map.animateCamera(
+        map.moveCamera(
             CameraUpdateFactory.newLatLngZoom(target, zoom),
-            800,
         )
     }
 
