@@ -47,7 +47,7 @@ class MatchingEngineTest {
     private Trip requestedTrip;
     private TripMatchingState freshState;   // lastBroadcastAt = null (round chưa bắt đầu)
     private TripMatchingState waitingState; // lastBroadcastAt = now  (round đang chờ)
-    private TripMatchingState expiredState; // lastBroadcastAt = now - 15s (round đã hết timeout 10s)
+    private TripMatchingState expiredState; // lastBroadcastAt = now - 35s (round đã hết timeout 30s)
 
     @BeforeEach
     void setUp() {
@@ -91,7 +91,7 @@ class MatchingEngineTest {
                 .rejectedOrNotifiedDriverIds(new HashSet<>())
                 .build();
 
-        // lastBroadcastAt = 15 giây trước → đã vượt quá ROUND_TIMEOUT_SECONDS (10s)
+        // lastBroadcastAt = 35 giây trước → đã vượt quá ROUND_TIMEOUT_SECONDS (30s)
         expiredState = TripMatchingState.builder()
                 .tripId(TRIP_ID)
                 .customerId(CUSTOMER_ID)
@@ -99,7 +99,7 @@ class MatchingEngineTest {
                 .pickupLng(106.7009)
                 .createdAt(Instant.now())
                 .round(1)
-                .lastBroadcastAt(Instant.now().minusSeconds(15))
+                .lastBroadcastAt(Instant.now().minusSeconds(35))
                 .rejectedOrNotifiedDriverIds(new HashSet<>())
                 .build();
     }
@@ -172,7 +172,7 @@ class MatchingEngineTest {
     }
 
     // -------------------------------------------------------------------------
-    // Round 1 — không có driver → quick retry (5s) thay vì full 10s
+    // Round 1 — không có driver → quick retry (5s) thay vì full 30s
     // -------------------------------------------------------------------------
 
     @Test
@@ -273,7 +273,7 @@ class MatchingEngineTest {
                 .pickupLng(106.7009)
                 .createdAt(Instant.now().minusSeconds(310)) // 5 phút 10 giây trước
                 .round(15)
-                .lastBroadcastAt(Instant.now().minusSeconds(15))
+                .lastBroadcastAt(Instant.now().minusSeconds(35))
                 .rejectedOrNotifiedDriverIds(new HashSet<>())
                 .build();
 
