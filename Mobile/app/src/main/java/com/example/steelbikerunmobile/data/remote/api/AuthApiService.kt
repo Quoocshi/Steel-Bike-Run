@@ -13,4 +13,7 @@ interface AuthApiService {
 
     @POST("api/v1/auth/register")
     suspend fun register(@Body request: RegisterRequestDto): ApiEnvelope<AuthResponseDto>
+
+    @POST("api/v1/auth/logout")
+    suspend fun logout(): ApiEnvelope<Unit>
 }
