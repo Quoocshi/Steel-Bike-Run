@@ -18,7 +18,9 @@ import com.example.steelbikerunmobile.domain.usecase.trip.ObserveTripUpdatesUseC
 import com.example.steelbikerunmobile.domain.usecase.trip.ReverseGeocodeUseCase
 import com.example.steelbikerunmobile.domain.usecase.trip.SearchDestinationUseCase
 import com.example.steelbikerunmobile.domain.usecase.trip.SubmitReviewUseCase
+import com.example.steelbikerunmobile.domain.repository.TripRepository
 import com.example.steelbikerunmobile.data.local.datastore.AuthPreferencesDataStore
+import com.example.steelbikerunmobile.data.remote.dto.TripResponseDto
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
@@ -136,6 +138,7 @@ class CustomerHomeViewModel @Inject constructor(
     private val submitReviewUseCase: SubmitReviewUseCase,
     private val locationStreamProvider: LocationStreamProvider,
     private val authDataStore: AuthPreferencesDataStore,
+    private val tripRepository: TripRepository,
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(CustomerHomeUiState())
@@ -279,26 +282,54 @@ class CustomerHomeViewModel @Inject constructor(
         }
     }
 
-    /** Driver has marked the trip complete → show receipt. */
+    /** Driver has marked the trip complete → fetch trip from backend and show receipt. */
     fun onTripCompleted() {
         tripProgressJob?.cancel()
-        val state = _uiState.value
-        val est = state.estimate
-        val receipt = TripReceipt(
-            tripId = currentTripId ?: "",
-            pickupAddress = state.pickupAddress,
-            destinationAddress = state.destinationAddress,
-            distanceKm = est?.distanceKm ?: 3.5,
-            durationMinutes = est?.durationMinutes ?: 18,
-            baseFare = est?.basePrice?.toLong() ?: 42_000L,
-            surgeMultiplier = est?.surgeMultiplier ?: 1.0,
-            totalFare = est?.finalPrice?.toLong() ?: 42_000L,
-        )
-        _uiState.update {
-            it.copy(
-                flowStep = CustomerFlowStep.RECEIPT,
-                tripStatus = TripStatus.COMPLETED,
-                receipt = receipt,
+        val tripId = currentTripId ?: return
+        viewModelScope.launch {
+            val state = _uiState.value
+            val est = state.estimate
+
+                    tripRepository.getTrip(tripId).fold(
+                onSuccess = { tripResponse ->
+                    val receipt = TripReceipt(
+                        tripId = tripId,
+                        pickupAddress = state.pickupAddress,
+                        destinationAddress = state.destinationAddress,
+                        distanceKm = tripResponse.distanceKm?.toDouble() ?: est?.distanceKm ?: 0.0,
+                        durationMinutes = tripResponse.durationMinutes ?: est?.durationMinutes ?: 0,
+                        baseFare = tripResponse.basePrice?.toLong() ?: est?.basePrice?.toLong() ?: 0L,
+                        surgeMultiplier = tripResponse.surgeMultiplier ?: est?.surgeMultiplier ?: 1.0,
+                        totalFare = tripResponse.finalPrice?.toLong() ?: est?.finalPrice?.toLong() ?: 0L,
+                    )
+                    _uiState.update {
+                        it.copy(
+                            flowStep = CustomerFlowStep.RECEIPT,
+                            tripStatus = TripStatus.COMPLETED,
+                            receipt = receipt,
+                        )
+                    }
+                },
+                onFailure = {
+                    // Fallback: use estimate data if backend call fails
+                    val receipt = TripReceipt(
+                        tripId = tripId,
+                        pickupAddress = state.pickupAddress,
+                        destinationAddress = state.destinationAddress,
+                        distanceKm = est?.distanceKm ?: 0.0,
+                        durationMinutes = est?.durationMinutes ?: 0,
+                        baseFare = est?.basePrice?.toLong() ?: 0L,
+                        surgeMultiplier = est?.surgeMultiplier ?: 1.0,
+                        totalFare = est?.finalPrice?.toLong() ?: 0L,
+                    )
+                    _uiState.update {
+                        it.copy(
+                            flowStep = CustomerFlowStep.RECEIPT,
+                            tripStatus = TripStatus.COMPLETED,
+                            receipt = receipt,
+                        )
+                    }
+                }
             )
         }
     }
