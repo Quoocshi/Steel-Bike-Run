@@ -14,6 +14,7 @@ import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeout
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.Response
@@ -134,10 +135,12 @@ class StompWebSocketManager @Inject constructor(
         return withContext(Dispatchers.IO) {
             if (isConnected) return@withContext true
             try {
-                val result = connectionState.first(timeoutMillis) {
-                    it == ConnectionState.CONNECTED || it == ConnectionState.DISCONNECTED || it == ConnectionState.ERROR
+                withTimeout(timeoutMillis) {
+                    val result = connectionState.first {
+                        it == ConnectionState.CONNECTED || it == ConnectionState.DISCONNECTED || it == ConnectionState.ERROR
+                    }
+                    result == ConnectionState.CONNECTED
                 }
-                result == ConnectionState.CONNECTED
             } catch (_: Exception) {
                 false
             }

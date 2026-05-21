@@ -23,6 +23,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Star
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -53,7 +54,9 @@ fun TripReceiptOverlay(
     receipt: TripReceipt,
     onRatingChanged: (Int) -> Unit,
     onCommentChanged: (String) -> Unit,
+    onSubmit: () -> Unit,
     onDismiss: () -> Unit,
+    isLoading: Boolean = false,
     modifier: Modifier = Modifier,
 ) {
     Box(
@@ -232,20 +235,47 @@ fun TripReceiptOverlay(
             Spacer(Modifier.height(28.dp))
 
             // ── Submit button ──────────────────────────────────────────────────
+            if (isLoading) {
+                CircularProgressIndicator(
+                    modifier = Modifier.size(24.dp),
+                    color = CustomerGreen,
+                )
+            } else {
+                Button(
+                    onClick = onSubmit,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(56.dp),
+                    shape = RoundedCornerShape(16.dp),
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = CustomerGreen,
+                        contentColor = Color.White
+                    ),
+                    enabled = receipt.rating > 0
+                ) {
+                    Text(
+                        if (receipt.rating > 0) "Gửi đánh giá" else "Bỏ qua đánh giá",
+                        style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold)
+                    )
+                }
+            }
+
+            // ── Skip / Go back button ─────────────────────────────────────────
+            Spacer(Modifier.height(8.dp))
             Button(
                 onClick = onDismiss,
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(56.dp),
+                    .height(48.dp),
                 shape = RoundedCornerShape(16.dp),
                 colors = ButtonDefaults.buttonColors(
-                    containerColor = CustomerGreen,
-                    contentColor = Color.White
+                    containerColor = Color.Transparent,
+                    contentColor = Color(0xFF6C757D)
                 )
             ) {
                 Text(
-                    if (receipt.rating > 0) "Gửi đánh giá" else "Về trang chủ",
-                    style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold)
+                    "Bỏ qua",
+                    style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Medium)
                 )
             }
             Spacer(Modifier.height(24.dp))

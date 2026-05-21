@@ -29,6 +29,12 @@ public enum ErrorCode {
     INVALID_COORDINATES(400, "Invalid coordinates: latitude must be in [-90, 90] and longitude in [-180, 180]",
             HttpStatus.BAD_REQUEST),
 
+    // Review
+    REVIEW_NOT_FOUND(404, "Review not found", HttpStatus.NOT_FOUND),
+    REVIEW_ALREADY_EXISTS(409, "You have already reviewed this trip", HttpStatus.CONFLICT),
+    INVALID_RATING(400, "Rating must be between 1 and 5", HttpStatus.BAD_REQUEST),
+    REVIEW_TRIP_NOT_COMPLETED(400, "Can only review completed trips", HttpStatus.BAD_REQUEST),
+
     // General
     BAD_REQUEST(400, "Bad request", HttpStatus.BAD_REQUEST),
     INTERNAL_ERROR(500, "Internal server error", HttpStatus.INTERNAL_SERVER_ERROR);

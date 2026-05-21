@@ -11,4 +11,5 @@ interface TripRepository {
     suspend fun startTrip(tripId: String): Result<Unit>
     suspend fun completeTrip(tripId: String): Result<Unit>
     suspend fun cancelTrip(tripId: String): Result<Unit>
+    suspend fun submitReview(tripId: String, rating: Int, comment: String?): Result<Unit>
 }
