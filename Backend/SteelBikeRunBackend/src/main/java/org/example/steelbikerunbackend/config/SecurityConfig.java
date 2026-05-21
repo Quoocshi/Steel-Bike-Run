@@ -23,7 +23,8 @@ public class SecurityConfig {
     private final JwtAuthFilter jwtAuthFilter;
 
     private static final String[] PUBLIC_URLS = {
-            "/api/v1/auth/**",
+            "/api/v1/auth/login",
+            "/api/v1/auth/register",
             "/api/v1/trip/estimate",
             "/api/v1/trip/surge-zones",
             "/ws/**",

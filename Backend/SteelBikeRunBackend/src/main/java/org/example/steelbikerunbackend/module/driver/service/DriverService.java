@@ -265,4 +265,34 @@ public class DriverService {
                         return response;
                 });
         }
+
+        /**
+         * Xóa toàn bộ trạng thái online của driver:
+         * - Set {@code isOnline = false} trong PostgreSQL
+         * - Evict driver profile cache
+         * - Xóa location khỏi Redis
+         *
+         * <p>Dùng khi user logout mà không qua "Chuyển về Khách hàng".
+         * Đảm bảo driver không bị stale trong matching system.
+         *
+         * @param userId UUID của user đang logout
+         */
+        @Transactional
+        public void clearDriverOnlineState(java.util.UUID userId) {
+                Driver driver = driverRepository.findByUserIdWithUser(userId)
+                                .orElse(null);
+                if (driver == null) {
+                        log.debug("No driver profile found for userId={}, skipping clear", userId);
+                        return;
+                }
+
+                if (driver.isOnline()) {
+                        driver.setOnline(false);
+                        driverRepository.save(driver);
+                        log.info("Driver [{}] set offline on logout", driver.getUser().getEmail());
+                }
+
+                cacheRepository.evict(driver.getUser().getEmail());
+                driverLocationService.removeDriverLocation(driver.getId().toString());
+        }
 }

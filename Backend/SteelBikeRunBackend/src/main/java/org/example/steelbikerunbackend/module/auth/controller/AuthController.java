@@ -15,9 +15,10 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.RestController;
 
-@Tag(name = "Auth", description = "Xác thực người dùng: đăng ký, đăng nhập")
+@Tag(name = "Auth", description = "Xác thực người dùng: đăng ký, đăng nhập, đăng xuất")
 @RestController
 @RequestMapping("/api/v1/auth")
 @RequiredArgsConstructor
@@ -54,5 +55,20 @@ public class AuthController {
             @Valid @RequestBody LoginRequest request) {
         AuthResponse response = authService.login(request);
         return ResponseEntity.ok(ApiResponse.success("Đăng nhập thành công", response));
+    }
+
+    @Operation(
+            summary = "Đăng xuất",
+            description = "Xóa JWT, set driver offline và xóa Redis cache. Đảm bảo driver không bị stale trong hệ thống sau khi đăng xuất."
+    )
+    @ApiResponses({
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "200", description = "Đăng xuất thành công"),
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "401", description = "Chưa đăng nhập")
+    })
+    @PostMapping("/logout")
+    public ResponseEntity<ApiResponse<Void>> logout(
+            @AuthenticationPrincipal String userEmail) {
+        authService.logout(userEmail);
+        return ResponseEntity.ok(ApiResponse.success("Đăng xuất thành công", null));
     }
 }
