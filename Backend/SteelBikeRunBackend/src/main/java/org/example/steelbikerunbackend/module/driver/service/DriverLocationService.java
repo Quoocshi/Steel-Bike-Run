@@ -186,7 +186,7 @@ public class DriverLocationService {
         Map<String, DriverLocationCache> cacheByDriverId = caches.stream()
                 .collect(Collectors.toMap(DriverLocationCache::getDriverId, c -> c));
 
-        // Bước 5: Batch load Driver entity (1 query duy nhất, JOIN FETCH User)
+        // Bước 5: Batch load Driver entity từ Postgres (1 query JOIN FETCH)
         List<UUID> uuids = cacheByDriverId.keySet().stream()
                 .map(id -> {
                     try { return UUID.fromString(id); }
@@ -198,30 +198,65 @@ public class DriverLocationService {
         Map<UUID, Driver> driverMap = driverRepository.findAllByIdInWithUser(uuids).stream()
                 .collect(Collectors.toMap(Driver::getId, Function.identity()));
 
+        // Bước 5b: Fallback — nếu Redis entry hết hạn nhưng driver vẫn online trong Postgres,
+        // thì query trực tiếp từ Postgres và gán location mặc định (location không đổi).
+        // Trường hợp: driver online nhưng không di chuyển -> Redis TTL expire -> vẫn tìm thấy qua DB.
+        if (driverMap.size() < uuids.size()) {
+            Set<UUID> foundIds = driverMap.keySet();
+            List<UUID> missingIds = uuids.stream()
+                    .filter(id -> !foundIds.contains(id))
+                    .collect(Collectors.toList());
+            List<Driver> fallbackDrivers = driverRepository.findAllByIdInWithUserAndOnline(missingIds);
+            for (Driver d : fallbackDrivers) {
+                driverMap.put(d.getId(), d);
+            }
+        }
+
         // Bước 6: Build response, tính Haversine, sort, lấy top limit
+        // Filter: driver phải có cache (Redis) HOẶC có trong fallback (DB online)
         return driverMap.values().stream()
                 .filter(driver -> {
                     DriverLocationCache cache = cacheByDriverId.get(driver.getId().toString());
-                    // Chỉ lấy driver đang online (double-check với cache)
-                    return cache != null && cache.isOnline();
+                    // Có cache từ Redis → dùng location realtime
+                    if (cache != null && cache.isOnline()) return true;
+                    // Không có cache nhưng driver online trong Postgres → dùng location cũ (DB fallback)
+                    return driver.isOnline();
                 })
                 .map(driver -> {
                     DriverLocationCache cache = cacheByDriverId.get(driver.getId().toString());
-                    double distKm = haversineKm(pickupLat, pickupLng, cache.getLatitude(), cache.getLongitude());
-                    return new NearbyDriverResponse(
-                            driver.getId().toString(),
-                            driver.getUser().getFullName(),
-                            driver.getVehiclePlate(),
-                            driver.getVehicleModel(),
-                            driver.getVehicleColor(),
-                            driver.getRating(),
-                            cache.getLatitude(),
-                            cache.getLongitude(),
-                            cache.getH3Index(),
-                            distKm,
-                            cache.getHeading(),
-                            cache.getSpeed()
-                    );
+                    if (cache != null) {
+                        // Location từ Redis (realtime)
+                        double distKm = haversineKm(pickupLat, pickupLng, cache.getLatitude(), cache.getLongitude());
+                        return new NearbyDriverResponse(
+                                driver.getId().toString(),
+                                driver.getUser().getFullName(),
+                                driver.getVehiclePlate(),
+                                driver.getVehicleModel(),
+                                driver.getVehicleColor(),
+                                driver.getRating(),
+                                cache.getLatitude(),
+                                cache.getLongitude(),
+                                cache.getH3Index(),
+                                distKm,
+                                cache.getHeading(),
+                                cache.getSpeed()
+                        );
+                    } else {
+                        // Redis entry hết hạn — không có location mới. Driver vẫn online trong Postgres.
+                        // Không có khoảng cách để sort, trả về distance = -1 để xử lý ở tầng trên.
+                        // Hoặc có thể lưu last known location vào Postgres và đọc ở đây.
+                        log.debug("[NearbyDrivers] Driver [{}] found via DB fallback (Redis expired), no location available",
+                                driver.getId());
+                        return new NearbyDriverResponse(
+                                driver.getId().toString(),
+                                driver.getUser().getFullName(),
+                                driver.getVehiclePlate(),
+                                driver.getVehicleModel(),
+                                driver.getVehicleColor(),
+                                driver.getRating(),
+                                0.0, 0.0, null, -1.0, null, null
+                        );
+                    }
                 })
                 .sorted(Comparator.comparingDouble(NearbyDriverResponse::distanceKm))
                 .limit(limit)

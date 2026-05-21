@@ -93,7 +93,8 @@ class LocationStreamProvider @Inject constructor(
 
         // PHASE 2: Regular interval updates as backup / continuation.
         // Also fires the first location on some devices where requestSingleUpdate is not reliable.
-        locationManager.requestLocationUpdates(provider, intervalMillis, 5f, periodicUpdateListener)
+        // minDistance = 0f ensures heartbeat fires every intervalMs even when stationary.
+        locationManager.requestLocationUpdates(provider, intervalMillis, 0f, periodicUpdateListener)
 
         awaitClose {
             locationManager.removeUpdates(singleUpdateListener)
