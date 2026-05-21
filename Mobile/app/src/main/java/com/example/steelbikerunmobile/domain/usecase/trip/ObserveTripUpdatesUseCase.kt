@@ -57,6 +57,9 @@ class ObserveTripUpdatesUseCase @Inject constructor(
                             vehicleColor = json.get("vehicleColor")?.asString ?: "",
                             driverRating = json.get("driverRating")?.asFloat ?: 0f,
                             etaMinutes = json.get("etaMinutes")?.asInt ?: 5,
+                            // Vị trí ban đầu của tài xế tại thời điểm accept cuốc
+                            driverLat = json.get("driverLat")?.asDouble,
+                            driverLng = json.get("driverLng")?.asDouble,
                         )
                     } else null
                 } catch (_: Exception) { null }
@@ -131,6 +134,9 @@ data class DriverFoundData(
     val vehicleColor: String,
     val driverRating: Float,
     val etaMinutes: Int,
+    // Vị trí ban đầu của tài xế tại thời điểm accept cuốc
+    val driverLat: Double?,
+    val driverLng: Double?,
 )
 
 data class TripStatusData(
