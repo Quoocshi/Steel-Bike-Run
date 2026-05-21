@@ -250,7 +250,9 @@ fun CustomerHomeScreen(
                     receipt          = receipt,
                     onRatingChanged  = viewModel::onRatingChanged,
                     onCommentChanged = viewModel::onCommentChanged,
-                    onDismiss        = viewModel::onReceiptDismissed,
+                    onSubmit        = viewModel::onSubmitReview,
+                    onDismiss       = viewModel::onReceiptDismissed,
+                    isLoading       = uiState.isLoading,
                 )
             }
         }

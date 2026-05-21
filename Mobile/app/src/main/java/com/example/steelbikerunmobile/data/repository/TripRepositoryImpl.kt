@@ -5,6 +5,7 @@ import com.example.steelbikerunmobile.data.remote.api.TripApiService
 import com.example.steelbikerunmobile.data.remote.dto.CreateTripRequestDto
 import com.example.steelbikerunmobile.data.remote.dto.PriceEstimateDto
 import com.example.steelbikerunmobile.data.remote.dto.PriceEstimateRequestDto
+import com.example.steelbikerunmobile.data.remote.dto.SubmitReviewRequestDto
 import com.example.steelbikerunmobile.domain.model.BookingDraft
 import com.example.steelbikerunmobile.domain.model.PriceEstimate
 import com.example.steelbikerunmobile.domain.repository.TripRepository
@@ -62,6 +63,18 @@ class TripRepositoryImpl @Inject constructor(
     override suspend fun cancelTrip(tripId: String): Result<Unit> =
         NetworkErrorMapper.safeCall {
             tripApiService.cancelTrip(tripId)
+            Unit
+        }
+
+    override suspend fun submitReview(tripId: String, rating: Int, comment: String?): Result<Unit> =
+        NetworkErrorMapper.safeCall {
+            tripApiService.submitReview(
+                SubmitReviewRequestDto(
+                    tripId = tripId,
+                    rating = rating,
+                    comment = comment
+                )
+            )
             Unit
         }
 
