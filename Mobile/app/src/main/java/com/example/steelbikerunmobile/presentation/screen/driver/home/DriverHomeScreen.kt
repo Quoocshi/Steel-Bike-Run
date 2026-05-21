@@ -152,9 +152,21 @@ fun DriverHomeScreen(
                 .navigationBarsPadding()
         )
 
-        // ── Layer 4: Face Scan overlay ────────────────────────────────────────
+        // ── Layer 4: Face Scan overlay (khi bật online) ────────────────────────
         AnimatedVisibility(
             visible = uiState.step == DriverHomeStep.FACE_SCAN,
+            enter = fadeIn(tween(300)),
+            exit = fadeOut(tween(300))
+        ) {
+            FaceScanOverlay(
+                onPass = { viewModel.onFaceScanPassed(hasLocationPermission()) },
+                onFail = viewModel::onFaceScanFailed
+            )
+        }
+
+        // ── Layer 4.5: Face Scan overlay (trước khi accept cuốc) ────────────────
+        AnimatedVisibility(
+            visible = uiState.step == DriverHomeStep.FACE_SCAN_BEFORE_ACCEPT,
             enter = fadeIn(tween(300)),
             exit = fadeOut(tween(300))
         ) {
