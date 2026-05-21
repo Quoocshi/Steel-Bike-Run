@@ -50,7 +50,7 @@ import java.util.UUID;
 public class MatchingEngine {
 
     // ── Config ────────────────────────────────────────────────────────────────
-    private static final int    ROUND_TIMEOUT_SECONDS  = 10;  // giảm 20→10s để retry nhanh hơn
+    private static final int    ROUND_TIMEOUT_SECONDS  = 30;
     private static final int    GLOBAL_TIMEOUT_MINUTES = 5;
     private static final int    DRIVERS_PER_ROUND      = 3;
     private static final int    SEARCH_KRING           = 13;
@@ -193,6 +193,7 @@ public class MatchingEngine {
                     .destLat(trip.getDestLat())
                     .destLng(trip.getDestLng())
                     .destAddress(trip.getDestAddress())
+                    .destDistanceKm(trip.getDistanceKm())
                     .finalPrice(trip.getFinalPrice())
                     .surgeMultiplier(trip.getSurgeMultiplier())
                     .distanceToPickupKm(driver.distanceKm())

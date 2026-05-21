@@ -29,6 +29,7 @@ public class TripRequestMessage {
     private double destLat;
     private double destLng;
     private String destAddress;
+    private double destDistanceKm;
 
     // Giá
     private BigDecimal finalPrice;

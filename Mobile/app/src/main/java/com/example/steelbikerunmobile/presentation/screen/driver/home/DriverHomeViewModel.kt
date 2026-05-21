@@ -357,11 +357,11 @@ class DriverHomeViewModel @Inject constructor(
         viewModelScope.launch {
             _uiState.update { it.copy(isLoading = true) }
             tripRepository.completeTrip(active.tripId).fold(
-                onSuccess = {
+                onSuccess = { tripResponse ->
                     val summary = TripSummary(
                         earnings = active.estimatedEarnings,
                         distanceKm = active.totalDistanceKm,
-                        durationMinutes = active.durationMinutes,
+                        durationMinutes = tripResponse.durationMinutes ?: active.durationMinutes,
                         surgeMultiplier = active.surgeMultiplier,
                     )
                     _uiState.update {
@@ -588,11 +588,13 @@ class DriverHomeViewModel @Inject constructor(
                             destinationAddress = request.destAddress.ifBlank { "\u0110i\u1ec3m \u0111\u1ebfn" },
                             pickupLat = request.pickupLat,
                             pickupLng = request.pickupLng,
+                            destLat = request.destLat,
+                            destLng = request.destLng,
                             distanceToPickupKm = request.distanceToPickupKm,
-                            totalDistanceKm = request.distanceToPickupKm * 3,
+                            totalDistanceKm = request.destDistanceKm,
                             estimatedEarnings = request.finalPrice,
                             surgeMultiplier = request.surgeMultiplier,
-                            durationMinutes = ((request.distanceToPickupKm * 3) / 25.0 * 60).toInt().coerceAtLeast(5),
+                            durationMinutes = ((request.destDistanceKm) / 25.0 * 60).toInt().coerceAtLeast(5),
                             countdownSeconds = request.timeoutSeconds,
                         ),
                         step = DriverHomeStep.INCOMING_TRIP,

@@ -5,6 +5,7 @@ import com.example.steelbikerunmobile.data.remote.api.TripApiService
 import com.example.steelbikerunmobile.data.remote.dto.CreateTripRequestDto
 import com.example.steelbikerunmobile.data.remote.dto.PriceEstimateDto
 import com.example.steelbikerunmobile.data.remote.dto.PriceEstimateRequestDto
+import com.example.steelbikerunmobile.data.remote.dto.TripResponseDto
 import com.example.steelbikerunmobile.data.remote.dto.SubmitReviewRequestDto
 import com.example.steelbikerunmobile.domain.model.BookingDraft
 import com.example.steelbikerunmobile.domain.model.PriceEstimate
@@ -54,10 +55,16 @@ class TripRepositoryImpl @Inject constructor(
             Unit
         }
 
-    override suspend fun completeTrip(tripId: String): Result<Unit> =
+    override suspend fun completeTrip(tripId: String): Result<TripResponseDto> =
         NetworkErrorMapper.safeCall {
-            tripApiService.completeTrip(tripId)
-            Unit
+            val envelope = tripApiService.completeTrip(tripId)
+            envelope.data ?: error(envelope.message ?: "Không thể hoàn thành cuốc xe")
+        }
+
+    override suspend fun getTrip(tripId: String): Result<TripResponseDto> =
+        NetworkErrorMapper.safeCall {
+            val envelope = tripApiService.getTrip(tripId)
+            envelope.data ?: error(envelope.message ?: "Không tìm thấy cuốc xe")
         }
 
     override suspend fun cancelTrip(tripId: String): Result<Unit> =
