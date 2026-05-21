@@ -4,6 +4,8 @@ import com.example.steelbikerunmobile.data.remote.dto.ApiEnvelope
 import com.example.steelbikerunmobile.data.remote.dto.CreateTripRequestDto
 import com.example.steelbikerunmobile.data.remote.dto.PriceEstimateDto
 import com.example.steelbikerunmobile.data.remote.dto.PriceEstimateRequestDto
+import com.example.steelbikerunmobile.data.remote.dto.ReviewResponseDto
+import com.example.steelbikerunmobile.data.remote.dto.SubmitReviewRequestDto
 import com.example.steelbikerunmobile.data.remote.dto.TripResponseDto
 import retrofit2.http.Body
 import retrofit2.http.GET
@@ -39,4 +41,7 @@ interface TripApiService {
 
     @GET("api/v1/trip/history")
     suspend fun getHistory(@Query("role") role: String = "customer"): ApiEnvelope<List<TripResponseDto>>
+
+    @POST("api/v1/review")
+    suspend fun submitReview(@Body request: SubmitReviewRequestDto): ApiEnvelope<ReviewResponseDto>
 }

@@ -49,3 +49,25 @@ data class TripResponseDto(
     val startedAt: String?,
     val completedAt: String?,
 )
+
+/**
+ * Request payload for submitting a trip review.
+ */
+data class SubmitReviewRequestDto(
+    val tripId: String,
+    val rating: Int,
+    val comment: String?
+)
+
+/**
+ * Response payload for a trip review.
+ */
+data class ReviewResponseDto(
+    val id: String?,
+    val tripId: String?,
+    val reviewerId: String?,
+    val revieweeId: String?,
+    val rating: Int?,
+    val comment: String?,
+    val createdAt: String?
+)

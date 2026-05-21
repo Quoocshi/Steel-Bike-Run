@@ -17,6 +17,7 @@ import com.example.steelbikerunmobile.domain.usecase.trip.GetPriceEstimateUseCas
 import com.example.steelbikerunmobile.domain.usecase.trip.ObserveTripUpdatesUseCase
 import com.example.steelbikerunmobile.domain.usecase.trip.ReverseGeocodeUseCase
 import com.example.steelbikerunmobile.domain.usecase.trip.SearchDestinationUseCase
+import com.example.steelbikerunmobile.domain.usecase.trip.SubmitReviewUseCase
 import com.example.steelbikerunmobile.data.local.datastore.AuthPreferencesDataStore
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.Job
@@ -62,6 +63,7 @@ data class TrackedDriverInfo(
 
 /** Receipt data populated when the trip transitions to COMPLETED. */
 data class TripReceipt(
+    val tripId: String = "",
     val pickupAddress: String = "Vị trí hiện tại",
     val destinationAddress: String = "",
     val distanceKm: Double = 0.0,
@@ -131,6 +133,7 @@ class CustomerHomeViewModel @Inject constructor(
     private val observeTripUpdatesUseCase: ObserveTripUpdatesUseCase,
     private val searchDestinationUseCase: SearchDestinationUseCase,
     private val reverseGeocodeUseCase: ReverseGeocodeUseCase,
+    private val submitReviewUseCase: SubmitReviewUseCase,
     private val locationStreamProvider: LocationStreamProvider,
     private val authDataStore: AuthPreferencesDataStore,
 ) : ViewModel() {
@@ -282,6 +285,7 @@ class CustomerHomeViewModel @Inject constructor(
         val state = _uiState.value
         val est = state.estimate
         val receipt = TripReceipt(
+            tripId = currentTripId ?: "",
             pickupAddress = state.pickupAddress,
             destinationAddress = state.destinationAddress,
             distanceKm = est?.distanceKm ?: 3.5,
@@ -323,6 +327,38 @@ class CustomerHomeViewModel @Inject constructor(
             )
         }
         refreshNearbyDrivers()
+    }
+
+    /**
+     * Submit the review for the completed trip.
+     * Called when the user taps "Gửi đánh giá" on the receipt screen.
+     */
+    fun onSubmitReview() {
+        val receipt = _uiState.value.receipt ?: return
+        val tripId = receipt.tripId
+        if (tripId.isBlank()) {
+            onReceiptDismissed()
+            return
+        }
+
+        viewModelScope.launch {
+            _uiState.update { it.copy(isLoading = true) }
+            submitReviewUseCase(tripId, receipt.rating, receipt.comment.takeIf { it.isNotBlank() })
+                .fold(
+                    onSuccess = {
+                        _uiState.update { it.copy(isLoading = false) }
+                        onReceiptDismissed()
+                    },
+                    onFailure = { error ->
+                        _uiState.update {
+                            it.copy(
+                                isLoading = false,
+                                errorMessage = error.message ?: "Không thể gửi đánh giá. Vui lòng thử lại."
+                            )
+                        }
+                    }
+                )
+        }
     }
 
     // ── Private logic ─────────────────────────────────────────────────────────────
