@@ -357,11 +357,11 @@ class DriverHomeViewModel @Inject constructor(
         viewModelScope.launch {
             _uiState.update { it.copy(isLoading = true) }
             tripRepository.completeTrip(active.tripId).fold(
-                onSuccess = {
+                onSuccess = { tripResponse ->
                     val summary = TripSummary(
                         earnings = active.estimatedEarnings,
                         distanceKm = active.totalDistanceKm,
-                        durationMinutes = active.durationMinutes,
+                        durationMinutes = tripResponse.durationMinutes ?: active.durationMinutes,
                         surgeMultiplier = active.surgeMultiplier,
                     )
                     _uiState.update {

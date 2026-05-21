@@ -248,6 +248,14 @@ public class TripService {
 
                 trip.setStatus(TripStatus.COMPLETED);
                 trip.setCompletedAt(LocalDateTime.now());
+
+                // Ghi đè duration_minutes bằng thời gian thực tế (phút)
+                if (trip.getStartedAt() != null) {
+                    long seconds = java.time.Duration.between(trip.getStartedAt(), trip.getCompletedAt()).getSeconds();
+                    int actualMinutes = (int) ((seconds + 59) / 60);  // round up
+                    trip.setDurationMinutes(actualMinutes);
+                }
+
                 trip = tripRepository.save(trip);
 
                 // Tăng totalTrips cho driver
