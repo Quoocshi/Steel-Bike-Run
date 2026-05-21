@@ -49,6 +49,11 @@ class AuthRepositoryImpl @Inject constructor(
     override fun observeSession(): Flow<AuthSession?> = dataStore.authSessionFlow
 
     override suspend fun logout() {
+        runCatching {
+            authApiService.logout()
+        }.onFailure {
+            // Log but don't fail — local logout should always proceed
+        }
         dataStore.clear()
     }
 
