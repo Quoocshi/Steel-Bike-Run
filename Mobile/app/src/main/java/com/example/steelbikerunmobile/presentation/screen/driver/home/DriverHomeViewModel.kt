@@ -31,7 +31,8 @@ import javax.inject.Inject
 // ── Navigation step ────────────────────────────────────────────────────────────
 enum class DriverHomeStep {
     HOME,
-    FACE_SCAN,
+    FACE_SCAN,           // Quét khi bật online
+    FACE_SCAN_BEFORE_ACCEPT, // Quét trước khi accept cuốc (cứ mỗi 2 cuốc)
     INCOMING_TRIP,
     TRIP_IN_PROGRESS,   // Driver has accepted and is executing the trip
     TRIP_SUMMARY,       // Trip completed – show earnings summary
@@ -117,6 +118,8 @@ data class DriverHomeUiState(
     val todayEarnings: Long = 185_000L,
     // Khoảng cách còn lại đến điểm đón (null = chưa có vị trí hoặc không trong trip)
     val distanceToPickupMeters: Double? = null,
+    // Số cuốc đã hoàn thành kể từ khi online. Cứ mỗi 2 cuốc phải quét mặt trước khi accept cuốc tiếp theo.
+    val tripCount: Int = 0,
 )
 
 /** Khoảng cách tối đa (mét) để bấm "Đã đến điểm đón". */
@@ -179,21 +182,59 @@ class DriverHomeViewModel @Inject constructor(
     }
 
     fun onFaceScanPassed(hasLocationPermission: Boolean) {
-        _uiState.update { it.copy(step = DriverHomeStep.HOME) }
-        executeToggleOnline(hasLocationPermission)
-        // Subscribe WebSocket để lắng nghe cuốc xe mới khi online
-        startListeningForTrips()
+        val currentStep = _uiState.value.step
+        if (currentStep == DriverHomeStep.FACE_SCAN_BEFORE_ACCEPT) {
+            // Face scan trước khi accept → reset count và accept cuốc
+            _uiState.update { it.copy(tripCount = 0, step = DriverHomeStep.HOME) }
+            _uiState.value.incomingTrip?.let { executeAcceptTrip(it) }
+        } else {
+            // Face scan khi online → bật online bình thường
+            _uiState.update { it.copy(step = DriverHomeStep.HOME) }
+            executeToggleOnline(hasLocationPermission)
+            // Subscribe WebSocket để lắng nghe cuốc xe mới khi online
+            startListeningForTrips()
+        }
     }
 
     fun onFaceScanFailed() {
-        _uiState.update { it.copy(step = DriverHomeStep.HOME, errorMessage = "Kiểm tra khuôn mặt thất bại. Hãy thử lại.") }
+        val currentStep = _uiState.value.step
+        if (currentStep == DriverHomeStep.FACE_SCAN_BEFORE_ACCEPT) {
+            // Quay lại INCOMING_TRIP, giữ nguyên incomingTrip để driver có thể thử lại
+            _uiState.update { it.copy(
+                step = DriverHomeStep.INCOMING_TRIP,
+                errorMessage = "Kiểm tra khuôn mặt thất bại. Vui lòng thử lại."
+            )}
+        } else {
+            _uiState.update { it.copy(step = DriverHomeStep.HOME, errorMessage = "Kiểm tra khuôn mặt thất bại. Hãy thử lại.") }
+        }
     }
 
     // ── Incoming trip ─────────────────────────────────────────────────────────
 
-    /** Driver accepts the incoming trip → call backend API + move to TRIP_IN_PROGRESS. */
+    /**
+     * Driver accepts the incoming trip.
+     * Nếu tripCount >= 2, yêu cầu quét mặt trước.
+     * Sau khi quét pass, count reset về 0 và accept cuốc.
+     */
     fun onTripAccepted() {
-        val incoming = _uiState.value.incomingTrip ?: return
+        val current = _uiState.value
+        val incoming = current.incomingTrip ?: return
+
+        // Kiểm tra xem có cần quét mặt trước khi accept không
+        if (current.tripCount >= 2) {
+            // Cần quét mặt trước - giữ nguyên incomingTrip để sau khi quét pass sẽ accept
+            _uiState.update { it.copy(
+                step = DriverHomeStep.FACE_SCAN_BEFORE_ACCEPT,
+                infoMessage = "Vui lòng kiểm tra trạng thái trước khi nhận cuốc tiếp theo"
+            )}
+            return
+        }
+
+        // tripCount < 2 → accept trực tiếp
+        executeAcceptTrip(incoming)
+    }
+
+    private fun executeAcceptTrip(incoming: IncomingTripData) {
         viewModelScope.launch {
             _uiState.update { it.copy(isLoading = true) }
             tripRepository.acceptTrip(incoming.tripId).fold(
@@ -309,7 +350,8 @@ class DriverHomeViewModel @Inject constructor(
         }
     }
 
-    /** Phase 3: Driver swipes to complete the active trip → call backend API. */
+    /** Phase 3: Driver swipes to complete the active trip → call backend API.
+     *  Sau khi hoàn thành, tăng tripCount để đếm số cuốc kể từ lần quét mặt cuối. */
     fun onSwipeToComplete() {
         val active = _uiState.value.activeTrip ?: return
         viewModelScope.launch {
@@ -328,6 +370,8 @@ class DriverHomeViewModel @Inject constructor(
                             activeTrip = null,
                             tripSummary = summary,
                             todayEarnings = it.todayEarnings + active.estimatedEarnings,
+                            // Tăng tripCount sau khi hoàn thành cuốc
+                            tripCount = it.tripCount + 1,
                             isLoading = false,
                         )
                     }
@@ -428,6 +472,8 @@ class DriverHomeViewModel @Inject constructor(
                         it.copy(
                             profile = profile,
                             isLoading = false,
+                            // Reset tripCount khi offline
+                            tripCount = if (!profile.isOnline) 0 else it.tripCount,
                             infoMessage = if (profile.isOnline) "Bạn đang online – GPS heartbeat mỗi 3 giây" else "Bạn đã offline",
                         )
                     }

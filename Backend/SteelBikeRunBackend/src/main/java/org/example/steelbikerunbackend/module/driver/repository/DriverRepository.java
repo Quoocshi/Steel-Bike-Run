@@ -29,4 +29,9 @@ public interface DriverRepository extends JpaRepository<Driver, UUID> {
     // Dùng sau SUNION Redis trong k-ring search — 1 query duy nhất thay vì N queries.
     @Query("SELECT d FROM Driver d JOIN FETCH d.user WHERE d.id IN :ids")
     List<Driver> findAllByIdInWithUser(@Param("ids") Collection<UUID> ids);
+
+    // Batch load drivers đang online. Dùng làm fallback khi Redis entry hết hạn nhưng
+    // Driver.isOnline=true trong PostgreSQL (driver vẫn online nhưng heartbeat gần đây đã expire).
+    @Query("SELECT d FROM Driver d JOIN FETCH d.user WHERE d.id IN :ids AND d.isOnline = true")
+    List<Driver> findAllByIdInWithUserAndOnline(@Param("ids") Collection<UUID> ids);
 }
