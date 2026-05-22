@@ -21,6 +21,7 @@ import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import com.example.steelbikerunmobile.BuildConfig
 import com.example.steelbikerunmobile.domain.model.LatLng as DomainLatLng
+import com.example.steelbikerunmobile.presentation.screen.driver.home.TripExecutionPhase
 import org.maplibre.android.MapLibre
 import org.maplibre.android.annotations.IconFactory
 import org.maplibre.android.annotations.MarkerOptions
@@ -73,6 +74,8 @@ private fun createCircleMarkerBitmap(emoji: String, bgColor: Color, sizePx: Int 
 fun DriverMapView(
     driverLocation: DomainLatLng?,
     pickupLocation: DomainLatLng?,
+    destinationLocation: DomainLatLng?,
+    executionPhase: TripExecutionPhase,
     modifier: Modifier = Modifier
 ) {
     val context = LocalContext.current
@@ -128,15 +131,21 @@ fun DriverMapView(
         map.animateCamera(CameraUpdateFactory.newLatLngZoom(target, 14.0))
     }
 
+    // ── Route: pickup vs destination based on phase ─────────────────────────
     var routePoints by remember { mutableStateOf<List<LatLng>>(emptyList()) }
     val okHttpClient = remember { OkHttpClient() }
 
-    // Fetch route from Goong
-    LaunchedEffect(driverLocation, pickupLocation) {
-        if (driverLocation != null && pickupLocation != null) {
+    val routeDestination: DomainLatLng? = when (executionPhase) {
+        TripExecutionPhase.GOING_TO_PICKUP -> pickupLocation
+        TripExecutionPhase.ARRIVED_AT_PICKUP -> null
+        TripExecutionPhase.IN_PROGRESS -> destinationLocation
+    }
+
+    LaunchedEffect(driverLocation, routeDestination) {
+        if (driverLocation != null && routeDestination != null) {
             withContext(Dispatchers.IO) {
                 try {
-                    val url = "https://rsapi.goong.io/Direction?origin=${driverLocation.latitude},${driverLocation.longitude}&destination=${pickupLocation.latitude},${pickupLocation.longitude}&vehicle=bike&api_key=${BuildConfig.GOONG_API_KEY}"
+                    val url = "https://rsapi.goong.io/Direction?origin=${driverLocation.latitude},${driverLocation.longitude}&destination=${routeDestination.latitude},${routeDestination.longitude}&vehicle=bike&api_key=${BuildConfig.GOONG_API_KEY}"
                     val request = Request.Builder().url(url).build()
                     val response = okHttpClient.newCall(request).execute()
                     val body = response.body?.string()
@@ -158,7 +167,7 @@ fun DriverMapView(
     }
 
     // ── Markers & overlays ──────────────────────────────────────────────────
-    LaunchedEffect(driverLocation, pickupLocation, routePoints, mapRef) {
+    LaunchedEffect(driverLocation, pickupLocation, destinationLocation, routePoints, mapRef) {
         val map = mapRef ?: return@LaunchedEffect
         map.clear()
 
@@ -175,25 +184,45 @@ fun DriverMapView(
             )
         }
 
-        // Add route
+        // Add route (green for pickup phase, blue for destination phase)
         if (routePoints.isNotEmpty()) {
+            val routeColor = when (executionPhase) {
+                TripExecutionPhase.GOING_TO_PICKUP -> "#4CAF50"
+                TripExecutionPhase.ARRIVED_AT_PICKUP -> "#4CAF50"
+                TripExecutionPhase.IN_PROGRESS -> "#2196F3"
+            }
             map.addPolyline(
                 PolylineOptions()
                     .addAll(routePoints)
-                    .color(android.graphics.Color.parseColor("#4CAF50"))
+                    .color(android.graphics.Color.parseColor(routeColor))
                     .width(8f)
             )
         }
 
-        // Add pickup marker
-        pickupLocation?.let { loc ->
-            val pickupBmp = createCircleMarkerBitmap("📍", Color(0xFFE53935), sizePx = 112)
-            map.addMarker(
-                MarkerOptions()
-                    .position(loc.toMapLibre())
-                    .icon(iconFactory.fromBitmap(pickupBmp))
-                    .title("Vị trí khách hàng")
-            )
+        // Add pickup marker (only shown before IN_PROGRESS)
+        if (executionPhase != TripExecutionPhase.IN_PROGRESS) {
+            pickupLocation?.let { loc ->
+                val pickupBmp = createCircleMarkerBitmap("📍", Color(0xFFE53935), sizePx = 112)
+                map.addMarker(
+                    MarkerOptions()
+                        .position(loc.toMapLibre())
+                        .icon(iconFactory.fromBitmap(pickupBmp))
+                        .title("Vị trí khách hàng")
+                )
+            }
+        }
+
+        // Add destination marker (only shown in IN_PROGRESS)
+        if (executionPhase == TripExecutionPhase.IN_PROGRESS) {
+            destinationLocation?.let { loc ->
+                val destBmp = createCircleMarkerBitmap("🏁", Color(0xFFE53935), sizePx = 112)
+                map.addMarker(
+                    MarkerOptions()
+                        .position(loc.toMapLibre())
+                        .icon(iconFactory.fromBitmap(destBmp))
+                        .title("Điểm đến")
+                )
+            }
         }
     }
 

@@ -96,6 +96,7 @@ fun CustomerMapView(
     var destinationMarker by remember { mutableStateOf<Marker?>(null) }
     var trackedDriverMarker by remember { mutableStateOf<Marker?>(null) }
     var routePolyline by remember { mutableStateOf<org.maplibre.android.annotations.Polyline?>(null) }
+    var destinationRoutePolyline by remember { mutableStateOf<org.maplibre.android.annotations.Polyline?>(null) }
     val nearbyDriverMarkers = remember { mutableStateOf<List<Marker>>(emptyList()) }
 
     // Bitmap caches — use same style as DriverMapView
@@ -169,10 +170,14 @@ fun CustomerMapView(
 
     // ── Route fetching (driver → pickup) ───────────────────────────────────
     var routePoints by remember { mutableStateOf<List<LatLng>>(emptyList()) }
+
+    // ── Route fetching (pickup → destination) ─────────────────────────────────
+    var destinationRoutePoints by remember { mutableStateOf<List<LatLng>>(emptyList()) }
+
     val okHttpClient = remember { OkHttpClient() }
 
-    LaunchedEffect(trackedDriverLocation, pickup) {
-        if (trackedDriverLocation != null) {
+    LaunchedEffect(trackedDriverLocation, pickup, flowStep) {
+        if (trackedDriverLocation != null && flowStep == CustomerFlowStep.TRACKING) {
             withContext(Dispatchers.IO) {
                 try {
                     val url = "https://rsapi.goong.io/Direction?origin=${trackedDriverLocation.latitude},${trackedDriverLocation.longitude}&destination=${pickup.latitude},${pickup.longitude}&vehicle=bike&api_key=${BuildConfig.GOONG_API_KEY}"
@@ -193,6 +198,32 @@ fun CustomerMapView(
             }
         } else {
             routePoints = emptyList()
+        }
+    }
+
+    // Fetch route from pickup to destination when trip is IN_PROGRESS
+    LaunchedEffect(pickup, destination, flowStep) {
+        if (flowStep == CustomerFlowStep.IN_PROGRESS && pickup != null && destination != null) {
+            withContext(Dispatchers.IO) {
+                try {
+                    val url = "https://rsapi.goong.io/Direction?origin=${pickup.latitude},${pickup.longitude}&destination=${destination.latitude},${destination.longitude}&vehicle=bike&api_key=${BuildConfig.GOONG_API_KEY}"
+                    val request = Request.Builder().url(url).build()
+                    val response = okHttpClient.newCall(request).execute()
+                    val body = response.body?.string()
+                    if (response.isSuccessful && body != null) {
+                        val json = JSONObject(body)
+                        val routes = json.optJSONArray("routes")
+                        if (routes != null && routes.length() > 0) {
+                            val encoded = routes.getJSONObject(0).getJSONObject("overview_polyline").getString("points")
+                            destinationRoutePoints = decodePolyline(encoded)
+                        }
+                    }
+                } catch (e: Exception) {
+                    e.printStackTrace()
+                }
+            }
+        } else {
+            destinationRoutePoints = emptyList()
         }
     }
 
@@ -222,18 +253,33 @@ fun CustomerMapView(
     }
 
     // ── Route polyline update ───────────────────────────────────────────────
-    LaunchedEffect(routePoints, mapRef) {
+    LaunchedEffect(routePoints, destinationRoutePoints, mapRef, flowStep) {
         val map = mapRef ?: return@LaunchedEffect
 
         routePolyline?.remove()
-        routePolyline = if (routePoints.isNotEmpty() && flowStep == CustomerFlowStep.TRACKING) {
-            map.addPolyline(
+        routePolyline = null
+        destinationRoutePolyline?.remove()
+        destinationRoutePolyline = null
+
+        // Driver → pickup route (green) — shown during TRACKING
+        if (routePoints.isNotEmpty() && flowStep == CustomerFlowStep.TRACKING) {
+            routePolyline = map.addPolyline(
                 PolylineOptions()
                     .addAll(routePoints)
                     .color(android.graphics.Color.parseColor("#4CAF50"))
                     .width(8f)
             )
-        } else null
+        }
+
+        // Pickup → destination route (blue) — shown during IN_PROGRESS
+        if (destinationRoutePoints.isNotEmpty() && flowStep == CustomerFlowStep.IN_PROGRESS) {
+            destinationRoutePolyline = map.addPolyline(
+                PolylineOptions()
+                    .addAll(destinationRoutePoints)
+                    .color(android.graphics.Color.parseColor("#2196F3"))
+                    .width(8f)
+            )
+        }
     }
 
     // ── Nearby driver markers — only on HOME/SEARCHING ─────────────────────
