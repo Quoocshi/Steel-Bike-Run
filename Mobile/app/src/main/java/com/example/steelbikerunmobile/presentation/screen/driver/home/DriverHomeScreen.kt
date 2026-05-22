@@ -119,10 +119,22 @@ fun DriverHomeScreen(
         val pickupLocation = uiState.activeTrip?.let { com.example.steelbikerunmobile.domain.model.LatLng(it.pickupLat, it.pickupLng) }
             ?: uiState.incomingTrip?.let { com.example.steelbikerunmobile.domain.model.LatLng(it.pickupLat, it.pickupLng) }
 
+        val destinationLocation = uiState.activeTrip?.let {
+            if (it.destLat != 0.0 || it.destLng != 0.0) {
+                com.example.steelbikerunmobile.domain.model.LatLng(it.destLat, it.destLng)
+            } else null
+        }
+
+        val executionPhase = uiState.activeTrip?.executionPhase
+            ?: uiState.incomingTrip?.let { TripExecutionPhase.GOING_TO_PICKUP }
+            ?: TripExecutionPhase.GOING_TO_PICKUP
+
         // ── Layer 1: Full-screen map ──────────────────────────────────────────
         DriverMapView(
             driverLocation = uiState.currentLocation,
             pickupLocation = pickupLocation,
+            destinationLocation = destinationLocation,
+            executionPhase = executionPhase,
             modifier = Modifier.fillMaxSize()
         )
 
