@@ -70,6 +70,8 @@ data class IncomingTripData(
 /** Active trip data retained while the trip is IN_PROGRESS. */
 data class ActiveTripData(
     val tripId: String,
+    val customerName: String,
+    val customerPhone: String,
     val pickupAddress: String,
     val destinationAddress: String,
     val estimatedEarnings: Long,
@@ -241,6 +243,8 @@ class DriverHomeViewModel @Inject constructor(
                 onSuccess = {
                     val active = ActiveTripData(
                         tripId = incoming.tripId,
+                        customerName = incoming.customerName,
+                        customerPhone = incoming.customerPhone,
                         pickupAddress = incoming.pickupAddress,
                         destinationAddress = incoming.destinationAddress,
                         estimatedEarnings = incoming.estimatedEarnings,

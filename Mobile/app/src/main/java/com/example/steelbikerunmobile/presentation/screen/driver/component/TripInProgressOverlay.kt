@@ -1,5 +1,7 @@
 package com.example.steelbikerunmobile.presentation.screen.driver.component
 
+import android.content.Intent
+import android.net.Uri
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.Animatable
@@ -27,7 +29,9 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowForward
+import androidx.compose.material.icons.filled.Call
 import androidx.compose.material.icons.filled.LocationOn
+import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.Star
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
@@ -50,6 +54,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.IntOffset
@@ -78,6 +83,8 @@ fun TripInProgressOverlay(
     distanceToPickupMeters: Double? = null,
     modifier: Modifier = Modifier,
 ) {
+    val context = LocalContext.current
+
     // Elapsed time ticker — chỉ tính khi đang IN_PROGRESS
     var elapsedSeconds by remember { mutableIntStateOf(0) }
     LaunchedEffect(activeTrip.tripId, activeTrip.executionPhase) {
@@ -173,6 +180,53 @@ fun TripInProgressOverlay(
             Spacer(Modifier.height(16.dp))
             HorizontalDivider(color = Color.White.copy(alpha = 0.08f))
             Spacer(Modifier.height(14.dp))
+
+            // ── Customer info ─────────────────────────────────────────────────────
+            Row(
+                Modifier
+                    .fillMaxWidth()
+                    .background(ArrivedBlue.copy(alpha = 0.15f), RoundedCornerShape(12.dp))
+                    .padding(horizontal = 14.dp, vertical = 10.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Icon(
+                    Icons.Default.Person,
+                    contentDescription = null,
+                    tint = ArrivedBlue,
+                    modifier = Modifier.size(20.dp)
+                )
+                Spacer(Modifier.width(10.dp))
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        "Khách hàng",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = Color.White.copy(alpha = 0.5f)
+                    )
+                    Text(
+                        activeTrip.customerName,
+                        style = MaterialTheme.typography.titleSmall.copy(
+                            fontWeight = FontWeight.Bold,
+                            color = Color.White
+                        )
+                    )
+                }
+                androidx.compose.material3.IconButton(
+                    onClick = {
+                        val dialIntent = Intent(Intent.ACTION_DIAL, Uri.parse("tel:${activeTrip.customerPhone}"))
+                        context.startActivity(dialIntent)
+                    },
+                    modifier = Modifier.size(36.dp),
+                ) {
+                    Icon(
+                        Icons.Default.Call,
+                        contentDescription = "Gọi khách hàng",
+                        tint = ActiveGreen,
+                        modifier = Modifier.size(22.dp)
+                    )
+                }
+            }
+
+            Spacer(Modifier.height(16.dp))
 
             // ── Route info ─────────────────────────────────────────────────────
             Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {

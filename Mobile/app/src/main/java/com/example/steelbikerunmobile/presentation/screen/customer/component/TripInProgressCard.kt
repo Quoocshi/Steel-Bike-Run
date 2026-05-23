@@ -1,7 +1,5 @@
 package com.example.steelbikerunmobile.presentation.screen.customer.component
 
-import android.content.Intent
-import android.net.Uri
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.RepeatMode
@@ -20,10 +18,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Call
 import androidx.compose.material.icons.outlined.Message
-import androidx.compose.material3.Button
-import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -31,14 +26,12 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.scale
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -53,8 +46,6 @@ fun TripInProgressCard(
     onMessage: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    val context = LocalContext.current
-
     // Pulsing green dot to show liveness
     val pulseScale = remember { Animatable(1f) }
     LaunchedEffect(Unit) {
@@ -150,27 +141,6 @@ fun TripInProgressCard(
                         Icon(Icons.Outlined.Message, contentDescription = "Nhắn tin", tint = MaterialTheme.colorScheme.secondary)
                     }
                 }
-            }
-
-            // ── Prominent call button ──────────────────────────────────────────
-            Button(
-                onClick = {
-                    val dialIntent = Intent(Intent.ACTION_DIAL, Uri.parse("tel:${driver.phone}"))
-                    context.startActivity(dialIntent)
-                },
-                modifier = Modifier.fillMaxWidth(),
-                shape = RoundedCornerShape(14.dp),
-                colors = ButtonDefaults.buttonColors(
-                    containerColor = CustomerGreen,
-                    contentColor = Color.White
-                )
-            ) {
-                Icon(Icons.Default.Call, contentDescription = null, modifier = Modifier.size(20.dp))
-                Spacer(Modifier.width(8.dp))
-                Text(
-                    "Gọi tài xế  ${driver.phone}",
-                    style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold)
-                )
             }
         }
     }
