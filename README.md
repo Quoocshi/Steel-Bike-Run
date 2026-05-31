@@ -373,10 +373,10 @@ Flyway runs automatically on startup and applies all migrations under `src/main/
 
 ```bash
 # 1. Navigate to the mobile directory
-cd Mobile/SteelBikeRun
+cd Mobile
 
 # 2. Open in Android Studio
-# File > Open > select Mobile/SteelBikeRun
+# File > Open > select Mobile
 
 # 3. Let Gradle sync all dependencies
 
