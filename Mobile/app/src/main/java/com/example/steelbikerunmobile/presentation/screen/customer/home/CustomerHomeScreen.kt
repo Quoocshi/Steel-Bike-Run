@@ -218,7 +218,6 @@ fun CustomerHomeScreen(
                     statusMessage  = uiState.tripStatusMessage,
                     onCall         = { },
                     onMessage      = { },
-                    onTripComplete = viewModel::onTripStarted,   // manual override
                 )
             }
         }
