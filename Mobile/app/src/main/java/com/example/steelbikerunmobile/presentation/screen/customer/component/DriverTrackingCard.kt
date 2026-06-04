@@ -28,6 +28,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.example.steelbikerunmobile.presentation.component.atom.SbOutlineButton
 import com.example.steelbikerunmobile.presentation.screen.customer.home.TrackedDriverInfo
 
 @Composable
@@ -36,6 +37,7 @@ fun DriverTrackingCard(
     statusMessage: String,
     onCall: () -> Unit,
     onMessage: () -> Unit,
+    onTripComplete: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     Surface(
@@ -153,6 +155,11 @@ fun DriverTrackingCard(
                 }
             }
 
+            // ── Complete trip CTA ──────────────────────────────────────────────
+            SbOutlineButton(
+                text = "Hoàn thành chuyến đi",
+                onClick = onTripComplete,
+            )
         }
     }
 }
